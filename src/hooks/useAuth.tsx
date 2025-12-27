@@ -11,7 +11,6 @@ interface AuthContextType {
   role: AppRole | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, firstName: string, lastName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -90,61 +89,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, firstName: string, lastName: string) => {
-    try {
-      const redirectUrl = `${window.location.origin}/`;
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          },
-        },
-      });
-
-      if (error) {
-        return { error: error as Error };
-      }
-
-      // If signup successful, create employee profile and assign default role
-      if (data.user) {
-        // Create employee profile
-        const { error: profileError } = await supabase
-          .from("employee_profiles")
-          .insert({
-            user_id: data.user.id,
-            email,
-            first_name: firstName,
-            last_name: lastName,
-          });
-
-        if (profileError) {
-          console.error("Error creating profile:", profileError);
-        }
-
-        // Assign default employee role
-        const { error: roleError } = await supabase
-          .from("user_roles")
-          .insert({
-            user_id: data.user.id,
-            role: "employee",
-          });
-
-        if (roleError) {
-          console.error("Error assigning role:", roleError);
-        }
-      }
-
-      return { error: null };
-    } catch (error) {
-      return { error: error as Error };
-    }
-  };
-
   const signOut = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -153,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, loading, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
