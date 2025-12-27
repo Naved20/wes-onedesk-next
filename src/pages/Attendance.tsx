@@ -13,9 +13,13 @@ import { Database } from "@/integrations/supabase/types";
 
 type Attendance = Database["public"]["Tables"]["attendance"]["Row"];
 
+interface AttendanceWithEmployee extends Attendance {
+  employee_name?: string;
+}
+
 export default function Attendance() {
   const { user, role } = useAuth();
-  const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceWithEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [todayCheckedIn, setTodayCheckedIn] = useState(false);
@@ -23,18 +27,39 @@ export default function Attendance() {
   useEffect(() => {
     fetchAttendance();
     checkTodayAttendance();
-  }, []);
+  }, [role]);
 
   const fetchAttendance = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: attendanceData, error } = await supabase
         .from("attendance")
         .select("*")
         .order("date", { ascending: false })
-        .limit(30);
+        .limit(50);
 
       if (error) throw error;
-      setAttendanceRecords(data || []);
+
+      // For managers and admins, fetch employee names
+      if ((role === "admin" || role === "manager") && attendanceData && attendanceData.length > 0) {
+        const userIds = [...new Set(attendanceData.map(a => a.user_id))];
+        const { data: profiles } = await supabase
+          .from("employee_profiles")
+          .select("user_id, first_name, last_name")
+          .in("user_id", userIds);
+
+        const profileMap = new Map(
+          profiles?.map(p => [p.user_id, `${p.first_name} ${p.last_name}`]) || []
+        );
+
+        const recordsWithNames = attendanceData.map(record => ({
+          ...record,
+          employee_name: profileMap.get(record.user_id) || "Unknown",
+        }));
+
+        setAttendanceRecords(recordsWithNames);
+      } else {
+        setAttendanceRecords(attendanceData || []);
+      }
     } catch (error) {
       console.error("Error fetching attendance:", error);
       toast({
@@ -181,6 +206,9 @@ export default function Attendance() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {(role === "admin" || role === "manager") && (
+                        <TableHead>Employee</TableHead>
+                      )}
                       <TableHead>Date</TableHead>
                       <TableHead>Check-in Time</TableHead>
                       <TableHead>Status</TableHead>
@@ -193,6 +221,9 @@ export default function Attendance() {
                   <TableBody>
                     {attendanceRecords.map((record) => (
                       <TableRow key={record.id}>
+                        {(role === "admin" || role === "manager") && (
+                          <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                        )}
                         <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
                         <TableCell>
                           {record.check_in_time
