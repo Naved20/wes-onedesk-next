@@ -5,19 +5,45 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react";
 import { Database } from "@/integrations/supabase/types";
+import { z } from "zod";
 
 type EmployeeProfile = Database["public"]["Tables"]["employee_profiles"]["Row"];
+type AppRole = Database["public"]["Enums"]["app_role"];
+
+const createUserSchema = z.object({
+  email: z.string().trim().email("Please enter a valid email").max(255),
+  password: z.string().min(6, "Password must be at least 6 characters").max(100),
+  firstName: z.string().trim().min(1, "First name is required").max(100),
+  lastName: z.string().trim().min(1, "Last name is required").max(100),
+  role: z.enum(["admin", "manager", "employee"]),
+});
 
 export default function Employees() {
-  const { role } = useAuth();
+  const { role, session } = useAuth();
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Form state
+  const [formEmail, setFormEmail] = useState("");
+  const [formPassword, setFormPassword] = useState("");
+  const [formFirstName, setFormFirstName] = useState("");
+  const [formLastName, setFormLastName] = useState("");
+  const [formRole, setFormRole] = useState<AppRole>("employee");
+  const [formDepartment, setFormDepartment] = useState("");
+  const [formDesignation, setFormDesignation] = useState("");
+  const [formInstitution, setFormInstitution] = useState("");
+  const [formPhone, setFormPhone] = useState("");
 
   useEffect(() => {
     fetchEmployees();
@@ -44,6 +70,82 @@ export default function Employees() {
     }
   };
 
+  const resetForm = () => {
+    setFormEmail("");
+    setFormPassword("");
+    setFormFirstName("");
+    setFormLastName("");
+    setFormRole("employee");
+    setFormDepartment("");
+    setFormDesignation("");
+    setFormInstitution("");
+    setFormPhone("");
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const validation = createUserSchema.safeParse({
+      email: formEmail,
+      password: formPassword,
+      firstName: formFirstName,
+      lastName: formLastName,
+      role: formRole,
+    });
+
+    if (!validation.success) {
+      toast({
+        title: "Validation Error",
+        description: validation.error.errors[0].message,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await supabase.functions.invoke("create-user", {
+        body: {
+          email: formEmail.trim(),
+          password: formPassword,
+          firstName: formFirstName.trim(),
+          lastName: formLastName.trim(),
+          role: formRole,
+          department: formDepartment.trim() || undefined,
+          designation: formDesignation.trim() || undefined,
+          institutionAssignment: formInstitution.trim() || undefined,
+          phone: formPhone.trim() || undefined,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast({
+        title: "User Created",
+        description: `Successfully created account for ${formFirstName} ${formLastName}`,
+      });
+
+      setDialogOpen(false);
+      resetForm();
+      fetchEmployees();
+    } catch (error: any) {
+      console.error("Error creating user:", error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create user",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const filteredEmployees = employees.filter((emp) =>
     `${emp.first_name} ${emp.last_name} ${emp.email} ${emp.department || ""}`
       .toLowerCase()
@@ -59,10 +161,120 @@ export default function Employees() {
             <p className="text-muted-foreground">Manage employee profiles and information</p>
           </div>
           {role === "admin" && (
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Employee
-            </Button>
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Employee
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Create New Employee</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleCreateUser} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input
+                        id="firstName"
+                        value={formFirstName}
+                        onChange={(e) => setFormFirstName(e.target.value)}
+                        required
+                        maxLength={100}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input
+                        id="lastName"
+                        value={formLastName}
+                        onChange={(e) => setFormLastName(e.target.value)}
+                        required
+                        maxLength={100}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email *</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formEmail}
+                      onChange={(e) => setFormEmail(e.target.value)}
+                      required
+                      maxLength={255}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password *</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={formPassword}
+                      onChange={(e) => setFormPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="role">Role *</Label>
+                    <Select value={formRole} onValueChange={(v) => setFormRole(v as AppRole)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="employee">Employee</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="department">Department</Label>
+                      <Input
+                        id="department"
+                        value={formDepartment}
+                        onChange={(e) => setFormDepartment(e.target.value)}
+                        maxLength={100}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="designation">Designation</Label>
+                      <Input
+                        id="designation"
+                        value={formDesignation}
+                        onChange={(e) => setFormDesignation(e.target.value)}
+                        maxLength={100}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="institution">Institution</Label>
+                    <Input
+                      id="institution"
+                      value={formInstitution}
+                      onChange={(e) => setFormInstitution(e.target.value)}
+                      maxLength={100}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(e.target.value)}
+                      maxLength={20}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full" disabled={submitting}>
+                    {submitting ? "Creating..." : "Create Employee"}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
 
