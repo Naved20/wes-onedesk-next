@@ -38,6 +38,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Verify the requesting user is an admin
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
+      console.error("No authorization header provided");
       return new Response(
         JSON.stringify({ error: "No authorization header" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -45,14 +46,27 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const token = authHeader.replace("Bearer ", "");
+    console.log("Verifying token...");
+    
     const { data: { user: requestingUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
     
-    if (authError || !requestingUser) {
+    if (authError) {
+      console.error("Auth error:", authError.message);
       return new Response(
-        JSON.stringify({ error: "Invalid token" }),
+        JSON.stringify({ error: `Authentication failed: ${authError.message}. Please sign out and sign back in.` }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    
+    if (!requestingUser) {
+      console.error("No user found for token");
+      return new Response(
+        JSON.stringify({ error: "Session expired. Please sign out and sign back in." }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    
+    console.log("User verified:", requestingUser.id);
 
     // Check if requesting user is admin
     const { data: roleData, error: roleError } = await supabaseAdmin
