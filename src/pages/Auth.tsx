@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { z } from "zod";
+import wesLogo from "@/assets/wes-logo.jpg";
 
 const loginSchema = z.object({
   email: z.string().trim().email("Please enter a valid email").max(255),
@@ -81,6 +82,9 @@ export default function Auth() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
+          <div className="flex justify-center mb-4">
+            <img src={wesLogo} alt="WES Foundation" className="h-20 w-20 rounded-full object-cover" />
+          </div>
           <CardTitle className="text-2xl font-bold">WES OneDesk</CardTitle>
         </CardHeader>
         <CardContent>

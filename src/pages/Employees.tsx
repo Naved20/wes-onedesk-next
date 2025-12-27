@@ -40,7 +40,6 @@ export default function Employees() {
   const [formFirstName, setFormFirstName] = useState("");
   const [formLastName, setFormLastName] = useState("");
   const [formRole, setFormRole] = useState<AppRole>("employee");
-  const [formDepartment, setFormDepartment] = useState("");
   const [formDesignation, setFormDesignation] = useState("");
   const [formInstitution, setFormInstitution] = useState("");
   const [formPhone, setFormPhone] = useState("");
@@ -70,13 +69,13 @@ export default function Employees() {
     }
   };
 
+
   const resetForm = () => {
     setFormEmail("");
     setFormPassword("");
     setFormFirstName("");
     setFormLastName("");
     setFormRole("employee");
-    setFormDepartment("");
     setFormDesignation("");
     setFormInstitution("");
     setFormPhone("");
@@ -111,7 +110,6 @@ export default function Employees() {
           firstName: formFirstName.trim(),
           lastName: formLastName.trim(),
           role: formRole,
-          department: formDepartment.trim() || undefined,
           designation: formDesignation.trim() || undefined,
           institutionAssignment: formInstitution.trim() || undefined,
           phone: formPhone.trim() || undefined,
@@ -147,7 +145,7 @@ export default function Employees() {
   };
 
   const filteredEmployees = employees.filter((emp) =>
-    `${emp.first_name} ${emp.last_name} ${emp.email} ${emp.department || ""}`
+    `${emp.first_name} ${emp.last_name} ${emp.email}`
       .toLowerCase()
       .includes(searchQuery.toLowerCase())
   );
@@ -231,25 +229,14 @@ export default function Employees() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="department">Department</Label>
-                      <Input
-                        id="department"
-                        value={formDepartment}
-                        onChange={(e) => setFormDepartment(e.target.value)}
-                        maxLength={100}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="designation">Designation</Label>
-                      <Input
-                        id="designation"
-                        value={formDesignation}
-                        onChange={(e) => setFormDesignation(e.target.value)}
-                        maxLength={100}
-                      />
-                    </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="designation">Designation</Label>
+                    <Input
+                      id="designation"
+                      value={formDesignation}
+                      onChange={(e) => setFormDesignation(e.target.value)}
+                      maxLength={100}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="institution">Institution</Label>
@@ -309,7 +296,6 @@ export default function Employees() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Department</TableHead>
                       <TableHead>Designation</TableHead>
                       <TableHead>Institution</TableHead>
                       <TableHead>Status</TableHead>
@@ -323,7 +309,6 @@ export default function Employees() {
                           {employee.first_name} {employee.last_name}
                         </TableCell>
                         <TableCell>{employee.email}</TableCell>
-                        <TableCell>{employee.department || "-"}</TableCell>
                         <TableCell>{employee.designation || "-"}</TableCell>
                         <TableCell>{employee.institution_assignment || "-"}</TableCell>
                         <TableCell>

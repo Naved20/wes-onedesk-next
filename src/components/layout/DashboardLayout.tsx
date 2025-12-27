@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import wesLogo from "@/assets/wes-logo.jpg";
 import {
   LayoutDashboard,
   Users,
@@ -70,7 +71,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         >
           {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
-        <h1 className="font-semibold text-lg">WES OneDesk</h1>
+        <div className="flex items-center gap-2">
+          <img src={wesLogo} alt="WES Foundation" className="h-8 w-8 rounded-full object-cover" />
+          <h1 className="font-semibold text-lg">WES OneDesk</h1>
+        </div>
         <div className="w-10" />
       </header>
 
@@ -90,7 +94,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       )}>
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center h-16 px-6 border-b">
+          <div className="flex items-center h-16 px-6 border-b gap-3">
+            <img src={wesLogo} alt="WES Foundation" className="h-10 w-10 rounded-full object-cover" />
             <h1 className="font-bold text-xl text-primary">WES OneDesk</h1>
           </div>
 
