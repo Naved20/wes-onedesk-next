@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import wesLogo from "@/assets/wes-logo.jpg";
@@ -19,6 +20,7 @@ import {
   Building,
   Star,
   Megaphone,
+  UserCircle,
 } from "lucide-react";
 
 interface NavItem {
@@ -50,6 +52,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const location = useLocation();
   const { user, role, signOut } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.id) {
+      supabase
+        .from("employee_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (data) setMyProfileId(data.id);
+        });
+    }
+  }, [user?.id]);
 
   const filteredNavItems = navItems.filter((item) => 
     role && item.roles.includes(role)
@@ -137,6 +153,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 <p className="text-xs text-muted-foreground capitalize">{role}</p>
               </div>
             </div>
+            {myProfileId && (
+              <Button
+                variant="outline"
+                className="w-full justify-start mb-2"
+                onClick={() => {
+                  navigate(`/employee/${myProfileId}`);
+                  setSidebarOpen(false);
+                }}
+              >
+                <UserCircle className="h-4 w-4 mr-2" />
+                My Profile
+              </Button>
+            )}
             <Button
               variant="outline"
               className="w-full justify-start"
