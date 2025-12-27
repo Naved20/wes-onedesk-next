@@ -26,15 +26,8 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
-    // Create admin client with service role key for creating users
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
     // Verify the requesting user is an admin
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
@@ -45,30 +38,37 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const token = authHeader.replace("Bearer ", "");
-    console.log("Verifying token with admin client...");
+    console.log("Verifying user token...");
     
-    // Use admin client to verify the user's JWT token
-    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    // Create client with user's auth header to verify identity
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+      auth: {
+        persistSession: false,
+      },
+    });
     
-    if (authError) {
-      console.error("Auth error:", authError.message);
+    const { data: { user: requestingUser }, error: authError } = await supabaseUser.auth.getUser();
+    
+    if (authError || !requestingUser) {
+      console.error("Auth error:", authError?.message || "No user found");
       return new Response(
-        JSON.stringify({ error: `Authentication failed: ${authError.message}` }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    
-    const requestingUser = userData?.user;
-    if (!requestingUser) {
-      console.error("No user found for token");
-      return new Response(
-        JSON.stringify({ error: "Session expired. Please sign out and sign back in." }),
+        JSON.stringify({ error: "Authentication failed. Please sign out and sign back in." }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
     
     console.log("User verified:", requestingUser.id);
+
+    // Create admin client with service role key for creating users and checking roles
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     // Check if requesting user is admin using the admin client
     const { data: roleData, error: roleError } = await supabaseAdmin
