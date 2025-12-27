@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,17 +16,21 @@ const loginSchema = z.object({
 
 export default function Auth() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, role, signIn, loading } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
+  // Get the intended destination from state or default to dashboard
+  const from = (location.state as { from?: string })?.from || "/dashboard";
+
   // Redirect if already logged in
   useEffect(() => {
     if (!loading && user && role) {
-      navigate("/dashboard");
+      navigate(from, { replace: true });
     }
-  }, [user, role, loading, navigate]);
+  }, [user, role, loading, navigate, from]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +61,7 @@ export default function Auth() {
           title: "Welcome back!",
           description: "You have successfully logged in.",
         });
-        navigate("/dashboard");
+        navigate(from, { replace: true });
       }
     } catch (error) {
       toast({
