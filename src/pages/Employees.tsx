@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -10,6 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
 import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react";
 import { Database } from "@/integrations/supabase/types";
@@ -27,14 +38,18 @@ const createUserSchema = z.object({
 });
 
 export default function Employees() {
-  const { role, session } = useAuth();
+  const { role } = useAuth();
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<EmployeeProfile | null>(null);
 
-  // Form state
+  // Create form state
   const [formEmail, setFormEmail] = useState("");
   const [formPassword, setFormPassword] = useState("");
   const [formFirstName, setFormFirstName] = useState("");
@@ -43,6 +58,12 @@ export default function Employees() {
   const [formDesignation, setFormDesignation] = useState("");
   const [formInstitution, setFormInstitution] = useState("");
   const [formPhone, setFormPhone] = useState("");
+
+  // Edit form state
+  const [editDesignation, setEditDesignation] = useState("");
+  const [editInstitution, setEditInstitution] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
 
   useEffect(() => {
     fetchEmployees();
@@ -68,7 +89,6 @@ export default function Employees() {
       setLoading(false);
     }
   };
-
 
   const resetForm = () => {
     setFormEmail("");
@@ -137,6 +157,97 @@ export default function Employees() {
       toast({
         title: "Error",
         description: error.message || "Failed to create user",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openEditDialog = (employee: EmployeeProfile) => {
+    setSelectedEmployee(employee);
+    setEditDesignation(employee.designation || "");
+    setEditInstitution(employee.institution_assignment || "");
+    setEditPhone(employee.phone || "");
+    setEditIsActive(employee.is_active ?? true);
+    setEditDialogOpen(true);
+  };
+
+  const handleEditEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEmployee) return;
+
+    setSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("employee_profiles")
+        .update({
+          designation: editDesignation.trim() || null,
+          institution_assignment: editInstitution.trim() || null,
+          phone: editPhone.trim() || null,
+          is_active: editIsActive,
+        })
+        .eq("id", selectedEmployee.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Updated",
+        description: "Employee updated successfully",
+      });
+
+      setEditDialogOpen(false);
+      setSelectedEmployee(null);
+      fetchEmployees();
+    } catch (error) {
+      console.error("Error updating employee:", error);
+      toast({
+        title: "Error",
+        description: "Failed to update employee",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const openDeleteDialog = (employee: EmployeeProfile) => {
+    setSelectedEmployee(employee);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteEmployee = async () => {
+    if (!selectedEmployee) return;
+
+    setSubmitting(true);
+    try {
+      // Delete from employee_profiles (user will remain in auth but profile is removed)
+      const { error } = await supabase
+        .from("employee_profiles")
+        .delete()
+        .eq("id", selectedEmployee.id);
+
+      if (error) throw error;
+
+      // Also delete user_roles
+      await supabase
+        .from("user_roles")
+        .delete()
+        .eq("user_id", selectedEmployee.user_id);
+
+      toast({
+        title: "Deleted",
+        description: `${selectedEmployee.first_name} ${selectedEmployee.last_name} has been removed`,
+      });
+
+      setDeleteDialogOpen(false);
+      setSelectedEmployee(null);
+      fetchEmployees();
+    } catch (error) {
+      console.error("Error deleting employee:", error);
+      toast({
+        title: "Error",
+        description: "Failed to delete employee",
         variant: "destructive",
       });
     } finally {
@@ -318,15 +429,27 @@ export default function Employees() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => navigate(`/employee/${employee.id}`)}
+                            >
                               <Eye className="h-4 w-4" />
                             </Button>
                             {role === "admin" && (
                               <>
-                                <Button variant="ghost" size="icon">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openEditDialog(employee)}
+                                >
                                   <Edit className="h-4 w-4" />
                                 </Button>
-                                <Button variant="ghost" size="icon">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => openDeleteDialog(employee)}
+                                >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
                               </>
@@ -342,6 +465,92 @@ export default function Employees() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Employee</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditEmployee} className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={`${selectedEmployee?.first_name} ${selectedEmployee?.last_name}`}
+                disabled
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editDesignation">Designation</Label>
+              <Input
+                id="editDesignation"
+                value={editDesignation}
+                onChange={(e) => setEditDesignation(e.target.value)}
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editInstitution">Institution</Label>
+              <Input
+                id="editInstitution"
+                value={editInstitution}
+                onChange={(e) => setEditInstitution(e.target.value)}
+                maxLength={100}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editPhone">Phone</Label>
+              <Input
+                id="editPhone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                maxLength={20}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editStatus">Status</Label>
+              <Select
+                value={editIsActive ? "active" : "inactive"}
+                onValueChange={(v) => setEditIsActive(v === "active")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Employee</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedEmployee?.first_name} {selectedEmployee?.last_name}?
+              This action cannot be undone and will remove all their profile data.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEmployee}
+              disabled={submitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {submitting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }

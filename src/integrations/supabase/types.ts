@@ -135,13 +135,17 @@ export type Database = {
         Row: {
           aadhar_number: string | null
           alternate_phone: string | null
+          bank_account_name: string | null
           bank_account_number: string | null
+          bank_city: string | null
           bank_ifsc_code: string | null
           bank_name: string | null
           base_salary: number | null
+          biometric_id: string | null
           blood_group: string | null
           caste: string | null
           confirmation_date: string | null
+          country: string | null
           created_at: string
           current_address: string | null
           current_city: string | null
@@ -149,24 +153,32 @@ export type Database = {
           current_state: string | null
           date_of_birth: string | null
           date_of_joining: string | null
+          degree: string | null
           department: string | null
           designation: string | null
           driving_license: string | null
+          education_worker_permit: string | null
           email: string
           emergency_contact_name: string | null
           emergency_contact_phone: string | null
           emergency_contact_relation: string | null
           employee_id: string | null
+          employment_status: string | null
           employment_type: string | null
+          engagement_type: string | null
           first_name: string
           gender: string | null
+          has_driving_license: boolean | null
           highest_qualification: string | null
+          house_number: string | null
           id: string
           institution_assignment: string | null
           is_active: boolean | null
           last_name: string
           marital_status: string | null
+          medical_health_condition: string | null
           nationality: string | null
+          next_increment_date: string | null
           pan_number: string | null
           passport_expiry: string | null
           passport_number: string | null
@@ -175,25 +187,40 @@ export type Database = {
           permanent_pincode: string | null
           permanent_state: string | null
           phone: string | null
+          position: string | null
           probation_end_date: string | null
+          professional_qualification_teaching: string | null
           profile_photo_url: string | null
+          project_program: string | null
+          race: string | null
           religion: string | null
+          role_code: string | null
+          samagra_id: string | null
           skills: string[] | null
+          social_category: string | null
+          training_record: string | null
           university: string | null
           updated_at: string
           user_id: string
+          vehicle_information: string | null
+          wes_mail: string | null
+          wes_mail_pass: string | null
           year_of_passing: number | null
         }
         Insert: {
           aadhar_number?: string | null
           alternate_phone?: string | null
+          bank_account_name?: string | null
           bank_account_number?: string | null
+          bank_city?: string | null
           bank_ifsc_code?: string | null
           bank_name?: string | null
           base_salary?: number | null
+          biometric_id?: string | null
           blood_group?: string | null
           caste?: string | null
           confirmation_date?: string | null
+          country?: string | null
           created_at?: string
           current_address?: string | null
           current_city?: string | null
@@ -201,24 +228,32 @@ export type Database = {
           current_state?: string | null
           date_of_birth?: string | null
           date_of_joining?: string | null
+          degree?: string | null
           department?: string | null
           designation?: string | null
           driving_license?: string | null
+          education_worker_permit?: string | null
           email: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           emergency_contact_relation?: string | null
           employee_id?: string | null
+          employment_status?: string | null
           employment_type?: string | null
+          engagement_type?: string | null
           first_name: string
           gender?: string | null
+          has_driving_license?: boolean | null
           highest_qualification?: string | null
+          house_number?: string | null
           id?: string
           institution_assignment?: string | null
           is_active?: boolean | null
           last_name: string
           marital_status?: string | null
+          medical_health_condition?: string | null
           nationality?: string | null
+          next_increment_date?: string | null
           pan_number?: string | null
           passport_expiry?: string | null
           passport_number?: string | null
@@ -227,25 +262,40 @@ export type Database = {
           permanent_pincode?: string | null
           permanent_state?: string | null
           phone?: string | null
+          position?: string | null
           probation_end_date?: string | null
+          professional_qualification_teaching?: string | null
           profile_photo_url?: string | null
+          project_program?: string | null
+          race?: string | null
           religion?: string | null
+          role_code?: string | null
+          samagra_id?: string | null
           skills?: string[] | null
+          social_category?: string | null
+          training_record?: string | null
           university?: string | null
           updated_at?: string
           user_id: string
+          vehicle_information?: string | null
+          wes_mail?: string | null
+          wes_mail_pass?: string | null
           year_of_passing?: number | null
         }
         Update: {
           aadhar_number?: string | null
           alternate_phone?: string | null
+          bank_account_name?: string | null
           bank_account_number?: string | null
+          bank_city?: string | null
           bank_ifsc_code?: string | null
           bank_name?: string | null
           base_salary?: number | null
+          biometric_id?: string | null
           blood_group?: string | null
           caste?: string | null
           confirmation_date?: string | null
+          country?: string | null
           created_at?: string
           current_address?: string | null
           current_city?: string | null
@@ -253,24 +303,32 @@ export type Database = {
           current_state?: string | null
           date_of_birth?: string | null
           date_of_joining?: string | null
+          degree?: string | null
           department?: string | null
           designation?: string | null
           driving_license?: string | null
+          education_worker_permit?: string | null
           email?: string
           emergency_contact_name?: string | null
           emergency_contact_phone?: string | null
           emergency_contact_relation?: string | null
           employee_id?: string | null
+          employment_status?: string | null
           employment_type?: string | null
+          engagement_type?: string | null
           first_name?: string
           gender?: string | null
+          has_driving_license?: boolean | null
           highest_qualification?: string | null
+          house_number?: string | null
           id?: string
           institution_assignment?: string | null
           is_active?: boolean | null
           last_name?: string
           marital_status?: string | null
+          medical_health_condition?: string | null
           nationality?: string | null
+          next_increment_date?: string | null
           pan_number?: string | null
           passport_expiry?: string | null
           passport_number?: string | null
@@ -279,13 +337,24 @@ export type Database = {
           permanent_pincode?: string | null
           permanent_state?: string | null
           phone?: string | null
+          position?: string | null
           probation_end_date?: string | null
+          professional_qualification_teaching?: string | null
           profile_photo_url?: string | null
+          project_program?: string | null
+          race?: string | null
           religion?: string | null
+          role_code?: string | null
+          samagra_id?: string | null
           skills?: string[] | null
+          social_category?: string | null
+          training_record?: string | null
           university?: string | null
           updated_at?: string
           user_id?: string
+          vehicle_information?: string | null
+          wes_mail?: string | null
+          wes_mail_pass?: string | null
           year_of_passing?: number | null
         }
         Relationships: []
