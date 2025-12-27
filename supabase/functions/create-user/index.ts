@@ -26,7 +26,6 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
     // Create admin client with service role key for creating users
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
@@ -47,18 +46,10 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const token = authHeader.replace("Bearer ", "");
-    console.log("Verifying token...");
+    console.log("Verifying token with admin client...");
     
-    // Create a client with the user's token to verify their identity
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
-    
-    const { data: { user: requestingUser }, error: authError } = await supabaseUser.auth.getUser();
+    // Use admin client to verify the user's JWT token
+    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
     
     if (authError) {
       console.error("Auth error:", authError.message);
@@ -68,6 +59,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
     
+    const requestingUser = userData?.user;
     if (!requestingUser) {
       console.error("No user found for token");
       return new Response(
