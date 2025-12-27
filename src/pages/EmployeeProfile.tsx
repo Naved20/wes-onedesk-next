@@ -328,7 +328,7 @@ export default function EmployeeProfile() {
                 {renderField("Project/Program", "project_program")}
                 {renderField("Designation", "designation")}
                 {renderField("Position", "position")}
-                {renderField("Institution", "institution_assignment")}
+                {renderSelect("Institution", "institution_assignment", ["WES", "DPS", "CLAS", "WESA"])}
                 {renderField("WES Mail", "wes_mail", "email")}
                 {renderField("WES Mail Password", "wes_mail_pass")}
                 {renderField("Date of Joining", "date_of_joining", "date")}

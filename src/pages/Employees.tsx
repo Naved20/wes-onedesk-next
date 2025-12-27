@@ -351,12 +351,17 @@ export default function Employees() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="institution">Institution</Label>
-                    <Input
-                      id="institution"
-                      value={formInstitution}
-                      onChange={(e) => setFormInstitution(e.target.value)}
-                      maxLength={100}
-                    />
+                    <Select value={formInstitution} onValueChange={setFormInstitution}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select institution" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="WES">WES</SelectItem>
+                        <SelectItem value="DPS">DPS</SelectItem>
+                        <SelectItem value="CLAS">CLAS</SelectItem>
+                        <SelectItem value="WESA">WESA</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone</Label>
@@ -491,12 +496,17 @@ export default function Employees() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="editInstitution">Institution</Label>
-              <Input
-                id="editInstitution"
-                value={editInstitution}
-                onChange={(e) => setEditInstitution(e.target.value)}
-                maxLength={100}
-              />
+              <Select value={editInstitution} onValueChange={setEditInstitution}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select institution" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="WES">WES</SelectItem>
+                  <SelectItem value="DPS">DPS</SelectItem>
+                  <SelectItem value="CLAS">CLAS</SelectItem>
+                  <SelectItem value="WESA">WESA</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="editPhone">Phone</Label>
