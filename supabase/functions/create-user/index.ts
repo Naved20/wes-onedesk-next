@@ -26,8 +26,9 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     
-    // Create admin client with service role key
+    // Create admin client with service role key for creating users
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -48,12 +49,21 @@ const handler = async (req: Request): Promise<Response> => {
     const token = authHeader.replace("Bearer ", "");
     console.log("Verifying token...");
     
-    const { data: { user: requestingUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+    // Create a client with the user's token to verify their identity
+    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+    
+    const { data: { user: requestingUser }, error: authError } = await supabaseUser.auth.getUser();
     
     if (authError) {
       console.error("Auth error:", authError.message);
       return new Response(
-        JSON.stringify({ error: `Authentication failed: ${authError.message}. Please sign out and sign back in.` }),
+        JSON.stringify({ error: `Authentication failed: ${authError.message}` }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -68,7 +78,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     console.log("User verified:", requestingUser.id);
 
-    // Check if requesting user is admin
+    // Check if requesting user is admin using the admin client
     const { data: roleData, error: roleError } = await supabaseAdmin
       .from("user_roles")
       .select("role")
