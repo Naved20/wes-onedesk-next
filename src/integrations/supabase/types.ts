@@ -799,6 +799,10 @@ export type Database = {
         }
         Returns: Json
       }
+      get_casual_leave_count: {
+        Args: { p_month: number; p_user_id: string; p_year: number }
+        Returns: number
+      }
       get_or_create_leave_balance: {
         Args: { p_month: number; p_user_id: string; p_year: number }
         Returns: {

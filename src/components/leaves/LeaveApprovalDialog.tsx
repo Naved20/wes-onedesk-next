@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -11,11 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Loader2, CheckCircle, XCircle, AlertTriangle, Info } from "lucide-react";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
 
 interface LeaveRequest {
   id: string;
+  user_id: string;
   employee_name?: string;
   start_date: string;
   end_date: string;
@@ -47,6 +49,48 @@ export function LeaveApprovalDialog({
 }: LeaveApprovalDialogProps) {
   const [rejectionReason, setRejectionReason] = useState("");
   const [processing, setProcessing] = useState<"approve" | "reject" | null>(null);
+  const [casualLeaveNumber, setCasualLeaveNumber] = useState<number | null>(null);
+  const [loadingLeaveCount, setLoadingLeaveCount] = useState(false);
+
+  // Fetch the casual leave count for this employee's month
+  useEffect(() => {
+    if (leave && leave.leave_type === "casual" && open) {
+      fetchCasualLeaveCount();
+    } else {
+      setCasualLeaveNumber(null);
+    }
+  }, [leave, open]);
+
+  const fetchCasualLeaveCount = async () => {
+    if (!leave) return;
+    
+    setLoadingLeaveCount(true);
+    try {
+      const leaveDate = new Date(leave.start_date);
+      const month = leaveDate.getMonth() + 1;
+      const year = leaveDate.getFullYear();
+
+      // Get approved casual leaves for this user in this month
+      const { data, error } = await supabase
+        .from("leaves")
+        .select("id")
+        .eq("user_id", leave.user_id)
+        .eq("leave_type", "casual")
+        .eq("status", "approved")
+        .gte("start_date", `${year}-${String(month).padStart(2, '0')}-01`)
+        .lt("start_date", month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`);
+
+      if (error) throw error;
+      
+      // This would be their (count + 1)th leave if approved
+      setCasualLeaveNumber((data?.length || 0) + 1);
+    } catch (error) {
+      console.error("Error fetching casual leave count:", error);
+      setCasualLeaveNumber(null);
+    } finally {
+      setLoadingLeaveCount(false);
+    }
+  };
 
   if (!leave) return null;
 
@@ -96,6 +140,8 @@ export function LeaveApprovalDialog({
   };
 
   const salaryImpact = getSalaryImpact();
+  const isCasualLeave = leave.leave_type === "casual";
+  const isSingleDay = leave.start_date === leave.end_date;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -119,11 +165,62 @@ export function LeaveApprovalDialog({
             </div>
           )}
 
+          {/* Casual Leave Number Indicator */}
+          {isCasualLeave && !leave.auto_rejected && (
+            <div className={`rounded-lg p-3 flex items-start gap-2 ${
+              casualLeaveNumber === 2 
+                ? "bg-amber-50 border border-amber-200" 
+                : "bg-muted/50 border border-border"
+            }`}>
+              <Info className={`h-5 w-5 shrink-0 mt-0.5 ${
+                casualLeaveNumber === 2 ? "text-amber-600" : "text-muted-foreground"
+              }`} />
+              <div>
+                <p className={`font-medium ${casualLeaveNumber === 2 ? "text-amber-800" : "text-foreground"}`}>
+                  {loadingLeaveCount ? (
+                    "Loading..."
+                  ) : casualLeaveNumber === 1 ? (
+                    "This is their 1st casual leave this month"
+                  ) : casualLeaveNumber === 2 ? (
+                    "This is their 2nd (FINAL) casual leave this month"
+                  ) : casualLeaveNumber && casualLeaveNumber > 2 ? (
+                    <span className="text-destructive">Warning: This would exceed the 2/month limit!</span>
+                  ) : (
+                    "Casual leave request"
+                  )}
+                </p>
+                {casualLeaveNumber === 2 && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Approving this will exhaust their monthly casual leave quota.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Single Day Validation */}
+          {isCasualLeave && !isSingleDay && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 flex items-start gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-destructive">Policy Violation</p>
+                <p className="text-sm text-muted-foreground">
+                  Casual leaves must be single-day applications. This request spans multiple days.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Leave Details Grid */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label className="text-muted-foreground">Leave Type</Label>
-              <div className="mt-1">{getLeaveTypeBadge()}</div>
+              <div className="mt-1 flex items-center gap-2">
+                {getLeaveTypeBadge()}
+                {isCasualLeave && isSingleDay && (
+                  <Badge variant="outline" className="text-xs">1 day</Badge>
+                )}
+              </div>
             </div>
             <div>
               <Label className="text-muted-foreground">Duration</Label>
@@ -188,7 +285,10 @@ export function LeaveApprovalDialog({
             <XCircle className="mr-2 h-4 w-4" />
             Reject
           </Button>
-          <Button onClick={handleApprove} disabled={!!processing || leave.auto_rejected}>
+          <Button 
+            onClick={handleApprove} 
+            disabled={!!processing || leave.auto_rejected || (isCasualLeave && !isSingleDay)}
+          >
             {processing === "approve" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             <CheckCircle className="mr-2 h-4 w-4" />
             Approve
