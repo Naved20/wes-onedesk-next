@@ -7,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Plus, Eye, AlertTriangle } from "lucide-react";
+import { Plus, Eye, AlertTriangle, ListChecks } from "lucide-react";
 import { LeaveBalanceCard } from "@/components/leaves/LeaveBalanceCard";
 import { LeaveApplicationForm } from "@/components/leaves/LeaveApplicationForm";
 import { LeaveApprovalDialog } from "@/components/leaves/LeaveApprovalDialog";
+import { BulkLeaveApproval } from "@/components/leaves/BulkLeaveApproval";
 
 interface LeaveBalance {
   casual_leaves_entitled: number;
@@ -48,6 +50,7 @@ export default function Leaves() {
   const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
   const [selectedLeave, setSelectedLeave] = useState<LeaveWithEmployee | null>(null);
   const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([]);
 
   useEffect(() => {
     fetchLeaves();
@@ -209,6 +212,34 @@ export default function Leaves() {
     }
   };
 
+  const handleBulkApprove = async (ids: string[]) => {
+    const { error } = await supabase
+      .from("leaves")
+      .update({
+        status: "approved",
+        approved_by: user?.id,
+        approved_at: new Date().toISOString(),
+      })
+      .in("id", ids);
+
+    if (error) throw error;
+    fetchLeaves();
+    if (role === "employee") fetchLeaveBalance();
+  };
+
+  const handleBulkReject = async (ids: string[], reason: string) => {
+    const { error } = await supabase
+      .from("leaves")
+      .update({
+        status: "rejected",
+        rejection_reason: reason,
+      })
+      .in("id", ids);
+
+    if (error) throw error;
+    fetchLeaves();
+  };
+
   const getStatusBadge = (leave: LeaveWithEmployee) => {
     if (leave.auto_rejected) {
       return (
@@ -252,6 +283,12 @@ export default function Leaves() {
     setSelectedLeave(leave);
     setApprovalDialogOpen(true);
   };
+
+  const pendingLeaves = leaves.filter(
+    (l) => l.status === "pending" && !l.auto_rejected
+  );
+
+  const isManagerOrAdmin = role === "admin" || role === "manager";
 
   return (
     <DashboardLayout>
@@ -298,89 +335,181 @@ export default function Leaves() {
           </div>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {role === "employee" ? "My Leave Requests" : "Leave Requests"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-              </div>
-            ) : leaves.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No leave requests found
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {(role === "admin" || role === "manager") && (
-                        <TableHead>Employee</TableHead>
-                      )}
-                      <TableHead>Dates</TableHead>
-                      <TableHead>Days</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Reason</TableHead>
-                      <TableHead>Status</TableHead>
-                      {(role === "admin" || role === "manager") && (
-                        <TableHead className="text-right">Actions</TableHead>
-                      )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {leaves.map((leave) => (
-                      <TableRow key={leave.id} className={leave.auto_rejected ? "bg-destructive/5" : ""}>
-                        {(role === "admin" || role === "manager") && (
-                          <TableCell className="font-medium">{leave.employee_name || "-"}</TableCell>
-                        )}
-                        <TableCell>
-                          <div className="text-sm">
-                            {format(new Date(leave.start_date), "MMM dd")} - {format(new Date(leave.end_date), "MMM dd, yyyy")}
-                          </div>
-                          {leave.is_half_day && (
-                            <div className="text-xs text-muted-foreground">
-                              {leave.half_day_type === "first_half" ? "Morning" : "Afternoon"}
+        {/* Manager/Admin View with Tabs */}
+        {isManagerOrAdmin ? (
+          <Tabs defaultValue="pending" className="space-y-4">
+            <TabsList>
+              <TabsTrigger value="pending" className="flex items-center gap-2">
+                <ListChecks className="h-4 w-4" />
+                Pending ({pendingLeaves.length})
+              </TabsTrigger>
+              <TabsTrigger value="all">All Requests</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="pending">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Bulk Leave Approval</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : pendingLeaves.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No pending leave requests
+                    </div>
+                  ) : (
+                    <BulkLeaveApproval
+                      pendingLeaves={pendingLeaves}
+                      selectedIds={selectedBulkIds}
+                      onSelectionChange={setSelectedBulkIds}
+                      onBulkApprove={handleBulkApprove}
+                      onBulkReject={handleBulkReject}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="all">
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Leave Requests</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    </div>
+                  ) : leaves.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No leave requests found
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Employee</TableHead>
+                            <TableHead>Dates</TableHead>
+                            <TableHead>Days</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Reason</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {leaves.map((leave) => (
+                            <TableRow key={leave.id} className={leave.auto_rejected ? "bg-destructive/5" : ""}>
+                              <TableCell className="font-medium">{leave.employee_name || "-"}</TableCell>
+                              <TableCell>
+                                <div className="text-sm">
+                                  {format(new Date(leave.start_date), "MMM dd")} - {format(new Date(leave.end_date), "MMM dd, yyyy")}
+                                </div>
+                                {leave.is_half_day && (
+                                  <div className="text-xs text-muted-foreground">
+                                    {leave.half_day_type === "first_half" ? "Morning" : "Afternoon"}
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {leave.working_days_count || 1}
+                                {leave.is_half_day && " (half)"}
+                              </TableCell>
+                              <TableCell>{getLeaveTypeBadge(leave)}</TableCell>
+                              <TableCell className="max-w-[200px]">
+                                <div className="truncate" title={leave.reason}>{leave.reason}</div>
+                                {leave.auto_rejection_reason && (
+                                  <div className="text-xs text-destructive mt-1">{leave.auto_rejection_reason}</div>
+                                )}
+                              </TableCell>
+                              <TableCell>{getStatusBadge(leave)}</TableCell>
+                              <TableCell className="text-right">
+                                {leave.status === "pending" && !leave.auto_rejected && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openApprovalDialog(leave)}
+                                  >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    Review
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        ) : (
+          /* Employee View */
+          <Card>
+            <CardHeader>
+              <CardTitle>My Leave Requests</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : leaves.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No leave requests found
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Dates</TableHead>
+                        <TableHead>Days</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Reason</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {leaves.map((leave) => (
+                        <TableRow key={leave.id} className={leave.auto_rejected ? "bg-destructive/5" : ""}>
+                          <TableCell>
+                            <div className="text-sm">
+                              {format(new Date(leave.start_date), "MMM dd")} - {format(new Date(leave.end_date), "MMM dd, yyyy")}
                             </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {leave.working_days_count || 1}
-                          {leave.is_half_day && " (half)"}
-                        </TableCell>
-                        <TableCell>{getLeaveTypeBadge(leave)}</TableCell>
-                        <TableCell className="max-w-[200px]">
-                          <div className="truncate" title={leave.reason}>{leave.reason}</div>
-                          {leave.auto_rejection_reason && (
-                            <div className="text-xs text-destructive mt-1">{leave.auto_rejection_reason}</div>
-                          )}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(leave)}</TableCell>
-                        {(role === "admin" || role === "manager") && (
-                          <TableCell className="text-right">
-                            {leave.status === "pending" && !leave.auto_rejected && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => openApprovalDialog(leave)}
-                              >
-                                <Eye className="h-4 w-4 mr-1" />
-                                Review
-                              </Button>
+                            {leave.is_half_day && (
+                              <div className="text-xs text-muted-foreground">
+                                {leave.half_day_type === "first_half" ? "Morning" : "Afternoon"}
+                              </div>
                             )}
                           </TableCell>
-                        )}
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                          <TableCell>
+                            {leave.working_days_count || 1}
+                            {leave.is_half_day && " (half)"}
+                          </TableCell>
+                          <TableCell>{getLeaveTypeBadge(leave)}</TableCell>
+                          <TableCell className="max-w-[200px]">
+                            <div className="truncate" title={leave.reason}>{leave.reason}</div>
+                            {leave.auto_rejection_reason && (
+                              <div className="text-xs text-destructive mt-1">{leave.auto_rejection_reason}</div>
+                            )}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(leave)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Leave Application Form Dialog */}
