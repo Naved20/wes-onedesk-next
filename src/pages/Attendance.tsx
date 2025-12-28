@@ -16,6 +16,7 @@ import { AttendanceCheckIn } from "@/components/attendance/AttendanceCheckIn";
 import { AttendanceStats } from "@/components/attendance/AttendanceStats";
 import { AttendanceApprovalDialog } from "@/components/attendance/AttendanceApprovalDialog";
 import { HolidayManager } from "@/components/attendance/HolidayManager";
+import { BulkAttendanceApproval } from "@/components/attendance/BulkAttendanceApproval";
 
 type Attendance = Database["public"]["Tables"]["attendance"]["Row"];
 
@@ -387,64 +388,11 @@ export default function Attendance() {
             </TabsContent>
 
             <TabsContent value="pending">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-yellow-500" />
-                    Pending Approvals
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {pendingRecords.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
-                      <p>All caught up! No pending attendance to review.</p>
-                    </div>
-                  ) : (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Employee</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Check-in</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {pendingRecords.map((record) => (
-                          <TableRow key={record.id}>
-                            <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
-                            <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
-                            <TableCell>
-                              {record.check_in_time
-                                ? format(new Date(record.check_in_time), "hh:mm a")
-                                : "-"}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex gap-1">
-                                {record.is_half_day && <Badge variant="secondary">Half</Badge>}
-                                {record.is_late && (
-                                  <Badge variant="outline" className="border-orange-500 text-orange-600">Late</Badge>
-                                )}
-                                {!record.is_half_day && !record.is_late && <Badge>Full Day</Badge>}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                size="sm"
-                                onClick={() => openApprovalDialog(record)}
-                              >
-                                Review
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  )}
-                </CardContent>
-              </Card>
+              <BulkAttendanceApproval
+                records={pendingRecords}
+                onUpdate={fetchAttendance}
+                userId={user?.id || ""}
+              />
             </TabsContent>
 
             {lateRecords.length > 0 && (
