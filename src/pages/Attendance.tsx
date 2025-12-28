@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { format, startOfMonth, endOfMonth, isSameDay } from "date-fns";
+import { format, startOfMonth, endOfMonth, isSameDay, isSunday } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -8,9 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Calendar } from "@/components/ui/calendar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { Clock, CheckCircle, XCircle, CalendarDays, TrendingUp, AlertCircle } from "lucide-react";
+import { CalendarDays, CheckCircle, XCircle, Clock, AlertTriangle, Eye } from "lucide-react";
 import { Database } from "@/integrations/supabase/types";
+import { AttendanceCheckIn } from "@/components/attendance/AttendanceCheckIn";
+import { AttendanceStats } from "@/components/attendance/AttendanceStats";
+import { AttendanceApprovalDialog } from "@/components/attendance/AttendanceApprovalDialog";
+import { HolidayManager } from "@/components/attendance/HolidayManager";
 
 type Attendance = Database["public"]["Tables"]["attendance"]["Row"];
 
@@ -18,25 +23,31 @@ interface AttendanceWithEmployee extends Attendance {
   employee_name?: string;
 }
 
-interface AttendanceStats {
-  totalPresent: number;
-  totalPending: number;
-  totalRejected: number;
-  totalRecords: number;
+interface Holiday {
+  date: string;
+  name: string;
 }
 
 export default function Attendance() {
   const { user, role } = useAuth();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceWithEmployee[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
-  const [checkingIn, setCheckingIn] = useState(false);
   const [todayCheckedIn, setTodayCheckedIn] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [selectedAttendance, setSelectedAttendance] = useState<AttendanceWithEmployee | null>(null);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+
+  const currentYear = selectedMonth.getFullYear();
+  const currentMonth = selectedMonth.getMonth() + 1;
 
   useEffect(() => {
-    fetchAttendance();
-    checkTodayAttendance();
+    fetchData();
   }, [role]);
+
+  const fetchData = async () => {
+    await Promise.all([fetchAttendance(), checkTodayAttendance(), fetchHolidays()]);
+  };
 
   const fetchAttendance = async () => {
     try {
@@ -95,29 +106,23 @@ export default function Attendance() {
     setTodayCheckedIn(!!data);
   };
 
-  // Calculate statistics for current month
-  const stats: AttendanceStats = useMemo(() => {
-    const monthStart = startOfMonth(selectedMonth);
-    const monthEnd = endOfMonth(selectedMonth);
+  const fetchHolidays = async () => {
+    const { data } = await supabase
+      .from("holidays")
+      .select("date, name")
+      .order("date");
     
-    const monthRecords = attendanceRecords.filter(record => {
-      const recordDate = new Date(record.date);
-      return recordDate >= monthStart && recordDate <= monthEnd;
-    });
-
-    return {
-      totalPresent: monthRecords.filter(r => r.status === "approved").length,
-      totalPending: monthRecords.filter(r => r.status === "pending").length,
-      totalRejected: monthRecords.filter(r => r.status === "rejected").length,
-      totalRecords: monthRecords.length,
-    };
-  }, [attendanceRecords, selectedMonth]);
+    setHolidays(data || []);
+  };
 
   // Get dates for calendar highlighting
   const calendarModifiers = useMemo(() => {
     const approved: Date[] = [];
     const pending: Date[] = [];
     const rejected: Date[] = [];
+    const halfDay: Date[] = [];
+    const late: Date[] = [];
+    const holidayDates: Date[] = holidays.map(h => new Date(h.date));
 
     attendanceRecords.forEach(record => {
       const date = new Date(record.date);
@@ -128,96 +133,57 @@ export default function Attendance() {
       } else if (record.status === "rejected") {
         rejected.push(date);
       }
+      if (record.is_half_day) {
+        halfDay.push(date);
+      }
+      if (record.is_late) {
+        late.push(date);
+      }
     });
 
-    return { approved, pending, rejected };
-  }, [attendanceRecords]);
+    return { approved, pending, rejected, halfDay, late, holiday: holidayDates };
+  }, [attendanceRecords, holidays]);
 
-  const handleCheckIn = async () => {
-    if (!user) return;
+  const openApprovalDialog = (attendance: AttendanceWithEmployee) => {
+    setSelectedAttendance(attendance);
+    setApprovalDialogOpen(true);
+  };
+
+  const getStatusBadge = (record: AttendanceWithEmployee) => {
+    const badges = [];
     
-    setCheckingIn(true);
-    try {
-      const today = format(new Date(), "yyyy-MM-dd");
-      const now = new Date().toISOString();
-
-      const { error } = await supabase.from("attendance").insert({
-        user_id: user.id,
-        date: today,
-        check_in_time: now,
-        status: "pending",
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Checked In",
-        description: "Your attendance has been recorded successfully.",
-      });
-      setTodayCheckedIn(true);
-      fetchAttendance();
-    } catch (error) {
-      console.error("Error checking in:", error);
-      toast({
-        title: "Error",
-        description: "Failed to record attendance",
-        variant: "destructive",
-      });
-    } finally {
-      setCheckingIn(false);
+    if (record.is_late) {
+      badges.push(
+        <Badge key="late" variant="outline" className="border-orange-500 text-orange-600 dark:text-orange-400">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Late
+        </Badge>
+      );
     }
-  };
-
-  const handleApprove = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("attendance")
-        .update({ 
-          status: "approved", 
-          approved_by: user?.id,
-          approved_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      toast({ title: "Approved", description: "Attendance approved successfully." });
-      fetchAttendance();
-    } catch (error) {
-      console.error("Error approving:", error);
-      toast({ title: "Error", description: "Failed to approve attendance", variant: "destructive" });
+    
+    if (record.is_half_day) {
+      badges.push(
+        <Badge key="half" variant="secondary">
+          Half Day
+        </Badge>
+      );
     }
-  };
 
-  const handleReject = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from("attendance")
-        .update({ status: "rejected" })
-        .eq("id", id);
-
-      if (error) throw error;
-
-      toast({ title: "Rejected", description: "Attendance rejected." });
-      fetchAttendance();
-    } catch (error) {
-      console.error("Error rejecting:", error);
-      toast({ title: "Error", description: "Failed to reject attendance", variant: "destructive" });
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+    switch (record.status) {
       case "approved":
-        return <Badge className="bg-green-500">Approved</Badge>;
+        badges.push(<Badge key="status" className="bg-green-500">Approved</Badge>);
+        break;
       case "rejected":
-        return <Badge variant="destructive">Rejected</Badge>;
+        badges.push(<Badge key="status" variant="destructive">Rejected</Badge>);
+        break;
       default:
-        return <Badge variant="secondary">Pending</Badge>;
+        badges.push(<Badge key="status" variant="secondary">Pending</Badge>);
     }
+
+    return <div className="flex flex-wrap gap-1">{badges}</div>;
   };
 
-  // Custom day content for calendar
+  // Custom modifiers styles for calendar
   const modifiersStyles = {
     approved: { 
       backgroundColor: "hsl(var(--chart-2))", 
@@ -234,199 +200,426 @@ export default function Attendance() {
       color: "hsl(var(--destructive-foreground))",
       borderRadius: "50%"
     },
+    holiday: {
+      backgroundColor: "hsl(var(--chart-5))",
+      color: "hsl(var(--primary-foreground))",
+      borderRadius: "50%"
+    },
   };
+
+  // Filter records for current month
+  const monthRecords = useMemo(() => {
+    const monthStart = startOfMonth(selectedMonth);
+    const monthEnd = endOfMonth(selectedMonth);
+    
+    return attendanceRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      return recordDate >= monthStart && recordDate <= monthEnd;
+    });
+  }, [attendanceRecords, selectedMonth]);
+
+  // Pending records for manager approval
+  const pendingRecords = useMemo(() => {
+    return attendanceRecords.filter(r => r.status === "pending");
+  }, [attendanceRecords]);
+
+  // Late check-ins for review
+  const lateRecords = useMemo(() => {
+    return attendanceRecords.filter(r => r.is_late && r.status === "pending");
+  }, [attendanceRecords]);
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Attendance</h1>
-            <p className="text-muted-foreground">Track and manage attendance records</p>
-          </div>
-          {role === "employee" && (
-            <Button onClick={handleCheckIn} disabled={checkingIn || todayCheckedIn}>
-              <Clock className="h-4 w-4 mr-2" />
-              {todayCheckedIn ? "Already Checked In" : checkingIn ? "Checking In..." : "Check In"}
-            </Button>
-          )}
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Attendance</h1>
+          <p className="text-muted-foreground">Track and manage attendance records</p>
         </div>
 
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
-                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalPresent}</p>
-                  <p className="text-sm text-muted-foreground">Days Present</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalPending}</p>
-                  <p className="text-sm text-muted-foreground">Pending</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
-                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalRejected}</p>
-                  <p className="text-sm text-muted-foreground">Rejected</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
-                  <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-bold">{stats.totalRecords}</p>
-                  <p className="text-sm text-muted-foreground">Total Records</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Employee Check-in Section */}
+        {role === "employee" && user && (
+          <AttendanceCheckIn
+            userId={user.id}
+            todayCheckedIn={todayCheckedIn}
+            onCheckInComplete={() => {
+              setTodayCheckedIn(true);
+              fetchAttendance();
+            }}
+          />
+        )}
 
-        {/* Calendar and Table Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Calendar Card */}
-          <Card className="lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarDays className="h-5 w-5" />
-                Attendance Calendar
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Calendar
-                mode="single"
-                month={selectedMonth}
-                onMonthChange={setSelectedMonth}
-                modifiers={{
-                  approved: (date) => calendarModifiers.approved.some(d => isSameDay(d, date)),
-                  pending: (date) => calendarModifiers.pending.some(d => isSameDay(d, date)),
-                  rejected: (date) => calendarModifiers.rejected.some(d => isSameDay(d, date)),
-                }}
-                modifiersStyles={modifiersStyles}
-                className="pointer-events-auto"
-              />
-              <div className="mt-4 flex flex-wrap gap-3 text-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500" />
-                  <span>Approved</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                  <span>Pending</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-red-500" />
-                  <span>Rejected</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Attendance Stats - Show for employee viewing their own stats */}
+        {user && role === "employee" && (
+          <AttendanceStats 
+            userId={user.id} 
+            year={currentYear} 
+            month={currentMonth} 
+          />
+        )}
 
-          {/* Table Card */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>
-                {role === "employee" ? "My Attendance Records" : "Attendance Records"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                </div>
-              ) : attendanceRecords.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  No attendance records found
-                </div>
-              ) : (
-                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {(role === "admin" || role === "manager") && (
-                          <TableHead>Employee</TableHead>
-                        )}
-                        <TableHead>Date</TableHead>
-                        <TableHead>Check-in Time</TableHead>
-                        <TableHead>Status</TableHead>
-                        {(role === "admin" || role === "manager") && (
-                          <TableHead className="text-right">Actions</TableHead>
-                        )}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {attendanceRecords.map((record) => (
-                        <TableRow key={record.id}>
-                          {(role === "admin" || role === "manager") && (
-                            <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
-                          )}
-                          <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
-                          <TableCell>
-                            {record.check_in_time
-                              ? format(new Date(record.check_in_time), "hh:mm a")
-                              : "-"}
-                          </TableCell>
-                          <TableCell>{getStatusBadge(record.status || "pending")}</TableCell>
-                          {(role === "admin" || role === "manager") && (
-                            <TableCell className="text-right">
-                              {record.status === "pending" && (
-                                <div className="flex justify-end gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleApprove(record.id)}
-                                  >
-                                    <CheckCircle className="h-4 w-4 mr-1" />
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => handleReject(record.id)}
-                                  >
-                                    <XCircle className="h-4 w-4 mr-1" />
-                                    Reject
-                                  </Button>
-                                </div>
-                              )}
-                            </TableCell>
-                          )}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
+        {/* Manager/Admin View with Tabs */}
+        {(role === "admin" || role === "manager") ? (
+          <Tabs defaultValue="overview" className="space-y-6">
+            <TabsList>
+              <TabsTrigger value="overview">Overview</TabsTrigger>
+              <TabsTrigger value="pending" className="relative">
+                Pending
+                {pendingRecords.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-yellow-500 text-white">
+                    {pendingRecords.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              {lateRecords.length > 0 && (
+                <TabsTrigger value="late" className="relative">
+                  Late Check-ins
+                  <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-orange-500 text-white">
+                    {lateRecords.length}
+                  </span>
+                </TabsTrigger>
               )}
-            </CardContent>
-          </Card>
-        </div>
+              {role === "admin" && (
+                <TabsTrigger value="holidays">Holidays</TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Calendar */}
+                <Card className="lg:col-span-1">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CalendarDays className="h-5 w-5" />
+                      Attendance Calendar
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Calendar
+                      mode="single"
+                      month={selectedMonth}
+                      onMonthChange={setSelectedMonth}
+                      modifiers={{
+                        approved: (date) => calendarModifiers.approved.some(d => isSameDay(d, date)),
+                        pending: (date) => calendarModifiers.pending.some(d => isSameDay(d, date)),
+                        rejected: (date) => calendarModifiers.rejected.some(d => isSameDay(d, date)),
+                        holiday: (date) => calendarModifiers.holiday.some(d => isSameDay(d, date)) || isSunday(date),
+                      }}
+                      modifiersStyles={modifiersStyles}
+                      className="pointer-events-auto"
+                    />
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-2))" }} />
+                        <span>Approved</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-4))" }} />
+                        <span>Pending</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--destructive))" }} />
+                        <span>Rejected</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-5))" }} />
+                        <span>Holiday</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Records Table */}
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Attendance Records</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {loading ? (
+                      <div className="flex justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      </div>
+                    ) : monthRecords.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No attendance records for this month
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Employee</TableHead>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Check-in</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {monthRecords.map((record) => (
+                              <TableRow key={record.id}>
+                                <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                                <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
+                                <TableCell>
+                                  {record.check_in_time
+                                    ? format(new Date(record.check_in_time), "hh:mm a")
+                                    : "-"}
+                                </TableCell>
+                                <TableCell>{getStatusBadge(record)}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => openApprovalDialog(record)}
+                                  >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    Review
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="pending">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-yellow-500" />
+                    Pending Approvals
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pendingRecords.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CheckCircle className="h-12 w-12 mx-auto mb-2 text-green-500" />
+                      <p>All caught up! No pending attendance to review.</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Check-in</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pendingRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                            <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
+                            <TableCell>
+                              {record.check_in_time
+                                ? format(new Date(record.check_in_time), "hh:mm a")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                {record.is_half_day && <Badge variant="secondary">Half</Badge>}
+                                {record.is_late && (
+                                  <Badge variant="outline" className="border-orange-500 text-orange-600">Late</Badge>
+                                )}
+                                {!record.is_half_day && !record.is_late && <Badge>Full Day</Badge>}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                onClick={() => openApprovalDialog(record)}
+                              >
+                                Review
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {lateRecords.length > 0 && (
+              <TabsContent value="late">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 text-orange-500" />
+                      Late Check-ins Requiring Review
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Employee</TableHead>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Check-in Time</TableHead>
+                          <TableHead>Notes</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lateRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                            <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
+                            <TableCell className="text-orange-600 dark:text-orange-400 font-medium">
+                              {record.check_in_time
+                                ? format(new Date(record.check_in_time), "hh:mm a")
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="max-w-[200px] truncate">
+                              {record.notes || "-"}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                onClick={() => openApprovalDialog(record)}
+                              >
+                                Review
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            )}
+
+            {role === "admin" && (
+              <TabsContent value="holidays">
+                <HolidayManager />
+              </TabsContent>
+            )}
+          </Tabs>
+        ) : (
+          /* Employee View - Calendar and Records */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="lg:col-span-1">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarDays className="h-5 w-5" />
+                  My Attendance
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Calendar
+                  mode="single"
+                  month={selectedMonth}
+                  onMonthChange={setSelectedMonth}
+                  modifiers={{
+                    approved: (date) => calendarModifiers.approved.some(d => isSameDay(d, date)),
+                    pending: (date) => calendarModifiers.pending.some(d => isSameDay(d, date)),
+                    rejected: (date) => calendarModifiers.rejected.some(d => isSameDay(d, date)),
+                    holiday: (date) => calendarModifiers.holiday.some(d => isSameDay(d, date)) || isSunday(date),
+                  }}
+                  modifiersStyles={modifiersStyles}
+                  className="pointer-events-auto"
+                />
+                <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-2))" }} />
+                    <span>Present</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-4))" }} />
+                    <span>Pending</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: "hsl(var(--chart-5))" }} />
+                    <span>Holiday</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>My Attendance Records</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : monthRecords.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No attendance records for this month
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Date</TableHead>
+                          <TableHead>Check-in Time</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {monthRecords.map((record) => (
+                          <TableRow key={record.id}>
+                            <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
+                            <TableCell>
+                              {record.check_in_time
+                                ? format(new Date(record.check_in_time), "hh:mm a")
+                                : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex gap-1">
+                                {record.is_half_day && (
+                                  <Badge variant="secondary">
+                                    {record.half_day_type === "first_half" ? "Morning" : "Afternoon"}
+                                  </Badge>
+                                )}
+                                {record.is_late && (
+                                  <Badge variant="outline" className="border-orange-500 text-orange-600">
+                                    Late
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {record.status === "approved" && <Badge className="bg-green-500">Approved</Badge>}
+                              {record.status === "pending" && <Badge variant="secondary">Pending</Badge>}
+                              {record.status === "rejected" && <Badge variant="destructive">Rejected</Badge>}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
+
+      {/* Approval Dialog */}
+      <AttendanceApprovalDialog
+        attendance={selectedAttendance}
+        isOpen={approvalDialogOpen}
+        onClose={() => {
+          setApprovalDialogOpen(false);
+          setSelectedAttendance(null);
+        }}
+        onUpdate={fetchAttendance}
+        userId={user?.id || ""}
+        isAdmin={role === "admin"}
+      />
     </DashboardLayout>
   );
 }
