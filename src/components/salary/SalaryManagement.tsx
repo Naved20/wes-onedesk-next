@@ -440,8 +440,97 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
     });
   };
 
+  const handleBulkApprove = async () => {
+    const toApprove = salaryRecords.filter(s => 
+      !s.is_locked && (s.approval_status === "draft" || s.approval_status === "pending_approval")
+    );
+    
+    if (toApprove.length === 0) {
+      toast({
+        title: "No salaries to approve",
+        description: "All salaries are already approved or locked",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("salaries")
+        .update({
+          approval_status: "approved",
+          approved_by: userId,
+          approved_at: new Date().toISOString(),
+        })
+        .in("id", toApprove.map(s => s.id));
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${toApprove.length} salaries approved successfully`,
+      });
+      fetchData();
+    } catch (error) {
+      console.error("Error bulk approving salaries:", error);
+      toast({
+        title: "Error",
+        description: "Failed to approve salaries",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleLockAll = async () => {
+    const tolock = salaryRecords.filter(s => 
+      s.approval_status === "approved" && !s.is_locked
+    );
+    
+    if (tolock.length === 0) {
+      toast({
+        title: "No salaries to lock",
+        description: "All approved salaries are already locked",
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase
+        .from("salaries")
+        .update({
+          is_locked: true,
+          locked_by: userId,
+          locked_at: new Date().toISOString(),
+          processed_at: new Date().toISOString(),
+        })
+        .in("id", tolock.map(s => s.id));
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${tolock.length} salaries locked successfully`,
+      });
+      fetchData();
+    } catch (error) {
+      console.error("Error locking salaries:", error);
+      toast({
+        title: "Error",
+        description: "Failed to lock salaries",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const calculated = calculateSalary();
   const pendingApprovals = salaryRecords.filter(s => s.approval_status === "pending_approval" && !s.is_locked);
+  const draftOrPendingCount = salaryRecords.filter(s => !s.is_locked && (s.approval_status === "draft" || s.approval_status === "pending_approval")).length;
+  const approvedUnlockedCount = salaryRecords.filter(s => s.approval_status === "approved" && !s.is_locked).length;
 
   const months = [
     { value: 1, label: "January" },
@@ -510,10 +599,24 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
             Generate Salaries
           </Button>
         </div>
-        <Button variant="outline" onClick={exportToCSV}>
-          <Download className="h-4 w-4 mr-2" />
-          Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={exportToCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Export CSV
+          </Button>
+          {isAdmin && draftOrPendingCount > 0 && (
+            <Button onClick={handleBulkApprove} disabled={isSubmitting} className="bg-green-600 hover:bg-green-700">
+              <CheckCircle className="h-4 w-4 mr-2" />
+              Approve All ({draftOrPendingCount})
+            </Button>
+          )}
+          {isAdmin && approvedUnlockedCount > 0 && (
+            <Button onClick={handleLockAll} disabled={isSubmitting}>
+              <Lock className="h-4 w-4 mr-2" />
+              Lock All ({approvedUnlockedCount})
+            </Button>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
