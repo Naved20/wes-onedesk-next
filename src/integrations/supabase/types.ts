@@ -386,48 +386,111 @@ export type Database = {
         }
         Relationships: []
       }
+      leave_balances: {
+        Row: {
+          casual_leaves_entitled: number | null
+          casual_leaves_used: number | null
+          created_at: string | null
+          id: string
+          month: number
+          sick_leaves_used: number | null
+          unplanned_leaves_used: number | null
+          updated_at: string | null
+          user_id: string
+          year: number
+        }
+        Insert: {
+          casual_leaves_entitled?: number | null
+          casual_leaves_used?: number | null
+          created_at?: string | null
+          id?: string
+          month: number
+          sick_leaves_used?: number | null
+          unplanned_leaves_used?: number | null
+          updated_at?: string | null
+          user_id: string
+          year: number
+        }
+        Update: {
+          casual_leaves_entitled?: number | null
+          casual_leaves_used?: number | null
+          created_at?: string | null
+          id?: string
+          month?: number
+          sick_leaves_used?: number | null
+          unplanned_leaves_used?: number | null
+          updated_at?: string | null
+          user_id?: string
+          year?: number
+        }
+        Relationships: []
+      }
       leaves: {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          auto_rejected: boolean | null
+          auto_rejection_reason: string | null
           created_at: string
           end_date: string
+          half_day_type: string | null
           id: string
           is_emergency: boolean | null
+          is_half_day: boolean | null
+          leave_type: Database["public"]["Enums"]["leave_type"] | null
+          medical_document_url: string | null
           reason: string
           rejection_reason: string | null
+          salary_deduction_percent: number | null
           start_date: string
           status: Database["public"]["Enums"]["leave_status"] | null
           updated_at: string
           user_id: string
+          working_days_count: number | null
         }
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          auto_rejected?: boolean | null
+          auto_rejection_reason?: string | null
           created_at?: string
           end_date: string
+          half_day_type?: string | null
           id?: string
           is_emergency?: boolean | null
+          is_half_day?: boolean | null
+          leave_type?: Database["public"]["Enums"]["leave_type"] | null
+          medical_document_url?: string | null
           reason: string
           rejection_reason?: string | null
+          salary_deduction_percent?: number | null
           start_date: string
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string
           user_id: string
+          working_days_count?: number | null
         }
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          auto_rejected?: boolean | null
+          auto_rejection_reason?: string | null
           created_at?: string
           end_date?: string
+          half_day_type?: string | null
           id?: string
           is_emergency?: boolean | null
+          is_half_day?: boolean | null
+          leave_type?: Database["public"]["Enums"]["leave_type"] | null
+          medical_document_url?: string | null
           reason?: string
           rejection_reason?: string | null
+          salary_deduction_percent?: number | null
           start_date?: string
           status?: Database["public"]["Enums"]["leave_status"] | null
           updated_at?: string
           user_id?: string
+          working_days_count?: number | null
         }
         Relationships: []
       }
@@ -640,6 +703,41 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_working_days: {
+        Args: { p_end_date: string; p_start_date: string }
+        Returns: number
+      }
+      check_leave_eligibility: {
+        Args: {
+          p_end_date: string
+          p_is_emergency?: boolean
+          p_leave_type: Database["public"]["Enums"]["leave_type"]
+          p_start_date: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      get_or_create_leave_balance: {
+        Args: { p_month: number; p_user_id: string; p_year: number }
+        Returns: {
+          casual_leaves_entitled: number | null
+          casual_leaves_used: number | null
+          created_at: string | null
+          id: string
+          month: number
+          sick_leaves_used: number | null
+          unplanned_leaves_used: number | null
+          updated_at: string | null
+          user_id: string
+          year: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "leave_balances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       get_user_institution: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
@@ -661,6 +759,7 @@ export type Database = {
       app_role: "admin" | "manager" | "employee"
       attendance_status: "pending" | "approved" | "rejected"
       leave_status: "pending" | "approved" | "rejected"
+      leave_type: "casual" | "sick" | "unplanned" | "emergency"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -791,6 +890,7 @@ export const Constants = {
       app_role: ["admin", "manager", "employee"],
       attendance_status: ["pending", "approved", "rejected"],
       leave_status: ["pending", "approved", "rejected"],
+      leave_type: ["casual", "sick", "unplanned", "emergency"],
     },
   },
 } as const

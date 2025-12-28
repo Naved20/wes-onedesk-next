@@ -1,23 +1,41 @@
 import { useEffect, useState } from "react";
-import { format, differenceInDays } from "date-fns";
+import { format } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
-import { Calendar, Plus, CheckCircle, XCircle } from "lucide-react";
-import { Database } from "@/integrations/supabase/types";
+import { Plus, Eye, AlertTriangle } from "lucide-react";
+import { LeaveBalanceCard } from "@/components/leaves/LeaveBalanceCard";
+import { LeaveApplicationForm } from "@/components/leaves/LeaveApplicationForm";
+import { LeaveApprovalDialog } from "@/components/leaves/LeaveApprovalDialog";
 
-type Leave = Database["public"]["Tables"]["leaves"]["Row"];
+interface LeaveBalance {
+  casual_leaves_entitled: number;
+  casual_leaves_used: number;
+  sick_leaves_used: number;
+  unplanned_leaves_used: number;
+}
 
-interface LeaveWithEmployee extends Leave {
+interface LeaveWithEmployee {
+  id: string;
+  user_id: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string | null;
+  is_emergency: boolean | null;
+  leave_type: string | null;
+  is_half_day: boolean | null;
+  half_day_type: string | null;
+  working_days_count: number | null;
+  salary_deduction_percent: number | null;
+  auto_rejected: boolean | null;
+  auto_rejection_reason: string | null;
+  created_at: string;
   employee_name?: string;
 }
 
@@ -25,18 +43,87 @@ export default function Leaves() {
   const { user, role } = useAuth();
   const [leaves, setLeaves] = useState<LeaveWithEmployee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [balanceLoading, setBalanceLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  
-  // Form state
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [reason, setReason] = useState("");
-  const [isEmergency, setIsEmergency] = useState(false);
+  const [approvalDialogOpen, setApprovalDialogOpen] = useState(false);
+  const [selectedLeave, setSelectedLeave] = useState<LeaveWithEmployee | null>(null);
+  const [leaveBalance, setLeaveBalance] = useState<LeaveBalance | null>(null);
 
   useEffect(() => {
     fetchLeaves();
-  }, [role]);
+    if (user && role === "employee") {
+      fetchLeaveBalance();
+    }
+  }, [role, user]);
+
+  const fetchLeaveBalance = async () => {
+    if (!user) return;
+    setBalanceLoading(true);
+    try {
+      const now = new Date();
+      const month = now.getMonth() + 1;
+      const year = now.getFullYear();
+
+      // Try to get existing balance
+      const { data, error } = await supabase
+        .from("leave_balances")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("year", year)
+        .eq("month", month)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setLeaveBalance({
+          casual_leaves_entitled: data.casual_leaves_entitled ?? 2,
+          casual_leaves_used: Number(data.casual_leaves_used) ?? 0,
+          sick_leaves_used: Number(data.sick_leaves_used) ?? 0,
+          unplanned_leaves_used: Number(data.unplanned_leaves_used) ?? 0,
+        });
+      } else {
+        // Create new balance record
+        const { data: newBalance, error: insertError } = await supabase
+          .from("leave_balances")
+          .insert({
+            user_id: user.id,
+            year,
+            month,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error("Error creating balance:", insertError);
+          // Use defaults
+          setLeaveBalance({
+            casual_leaves_entitled: 2,
+            casual_leaves_used: 0,
+            sick_leaves_used: 0,
+            unplanned_leaves_used: 0,
+          });
+        } else if (newBalance) {
+          setLeaveBalance({
+            casual_leaves_entitled: newBalance.casual_leaves_entitled ?? 2,
+            casual_leaves_used: Number(newBalance.casual_leaves_used) ?? 0,
+            sick_leaves_used: Number(newBalance.sick_leaves_used) ?? 0,
+            unplanned_leaves_used: Number(newBalance.unplanned_leaves_used) ?? 0,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching leave balance:", error);
+      setLeaveBalance({
+        casual_leaves_entitled: 2,
+        casual_leaves_used: 0,
+        sick_leaves_used: 0,
+        unplanned_leaves_used: 0,
+      });
+    } finally {
+      setBalanceLoading(false);
+    }
+  };
 
   const fetchLeaves = async () => {
     try {
@@ -64,9 +151,9 @@ export default function Leaves() {
           employee_name: profileMap.get(leave.user_id) || "Unknown",
         }));
 
-        setLeaves(leavesWithNames);
+        setLeaves(leavesWithNames as LeaveWithEmployee[]);
       } else {
-        setLeaves(leavesData || []);
+        setLeaves((leavesData || []) as LeaveWithEmployee[]);
       }
     } catch (error) {
       console.error("Error fetching leaves:", error);
@@ -77,46 +164,6 @@ export default function Leaves() {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-
-    setSubmitting(true);
-    try {
-      const { error } = await supabase.from("leaves").insert({
-        user_id: user.id,
-        start_date: startDate,
-        end_date: endDate,
-        reason,
-        is_emergency: isEmergency,
-        status: "pending",
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Leave Applied",
-        description: "Your leave request has been submitted for approval.",
-      });
-      
-      setDialogOpen(false);
-      setStartDate("");
-      setEndDate("");
-      setReason("");
-      setIsEmergency(false);
-      fetchLeaves();
-    } catch (error) {
-      console.error("Error applying leave:", error);
-      toast({
-        title: "Error",
-        description: "Failed to submit leave request",
-        variant: "destructive",
-      });
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -135,19 +182,20 @@ export default function Leaves() {
 
       toast({ title: "Approved", description: "Leave request approved successfully." });
       fetchLeaves();
+      if (role === "employee") fetchLeaveBalance();
     } catch (error) {
       console.error("Error approving:", error);
       toast({ title: "Error", description: "Failed to approve leave", variant: "destructive" });
     }
   };
 
-  const handleReject = async (id: string, rejectionReason?: string) => {
+  const handleReject = async (id: string, rejectionReason: string) => {
     try {
       const { error } = await supabase
         .from("leaves")
         .update({ 
           status: "rejected",
-          rejection_reason: rejectionReason || "Request denied",
+          rejection_reason: rejectionReason,
         })
         .eq("id", id);
 
@@ -161,10 +209,18 @@ export default function Leaves() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
+  const getStatusBadge = (leave: LeaveWithEmployee) => {
+    if (leave.auto_rejected) {
+      return (
+        <Badge variant="destructive" className="flex items-center gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          Auto-Rejected
+        </Badge>
+      );
+    }
+    switch (leave.status) {
       case "approved":
-        return <Badge className="bg-green-500">Approved</Badge>;
+        return <Badge className="bg-green-500 hover:bg-green-600">Approved</Badge>;
       case "rejected":
         return <Badge variant="destructive">Rejected</Badge>;
       default:
@@ -172,8 +228,29 @@ export default function Leaves() {
     }
   };
 
-  const calculateDays = (start: string, end: string) => {
-    return differenceInDays(new Date(end), new Date(start)) + 1;
+  const getLeaveTypeBadge = (leave: LeaveWithEmployee) => {
+    const type = leave.leave_type || "casual";
+    switch (type) {
+      case "casual":
+        return <Badge variant="outline">Casual</Badge>;
+      case "sick":
+        return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200">Sick (50%)</Badge>;
+      case "unplanned":
+        return <Badge variant="destructive">Unplanned (100%)</Badge>;
+      case "emergency":
+        return <Badge variant="outline" className="border-red-500 text-red-600">Emergency</Badge>;
+      default:
+        return <Badge variant="outline">{type}</Badge>;
+    }
+  };
+
+  const casualRemaining = leaveBalance 
+    ? Math.max(0, leaveBalance.casual_leaves_entitled - leaveBalance.casual_leaves_used)
+    : 2;
+
+  const openApprovalDialog = (leave: LeaveWithEmployee) => {
+    setSelectedLeave(leave);
+    setApprovalDialogOpen(true);
   };
 
   return (
@@ -185,71 +262,40 @@ export default function Leaves() {
             <p className="text-muted-foreground">Manage leave requests and approvals</p>
           </div>
           {role === "employee" && (
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Apply for Leave
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Apply for Leave</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="start-date">Start Date</Label>
-                      <Input
-                        id="start-date"
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="end-date">End Date</Label>
-                      <Input
-                        id="end-date"
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                        min={startDate}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="reason">Reason</Label>
-                    <Textarea
-                      id="reason"
-                      placeholder="Please provide a reason for your leave..."
-                      value={reason}
-                      onChange={(e) => setReason(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="emergency"
-                      checked={isEmergency}
-                      onChange={(e) => setIsEmergency(e.target.checked)}
-                      className="h-4 w-4"
-                    />
-                    <Label htmlFor="emergency" className="text-sm font-normal">
-                      This is an emergency leave
-                    </Label>
-                  </div>
-                  <Button type="submit" className="w-full" disabled={submitting}>
-                    {submitting ? "Submitting..." : "Submit Leave Request"}
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Apply for Leave
+            </Button>
           )}
         </div>
+
+        {/* Leave Balance Card for Employees */}
+        {role === "employee" && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <LeaveBalanceCard balance={leaveBalance} loading={balanceLoading} />
+            <Card className="md:col-span-2">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Leave Policy Summary</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  <div className="space-y-2">
+                    <p><strong>Casual Leave:</strong> 2 days/month</p>
+                    <p>• Requires 3-day advance notice</p>
+                    <p>• Maximum 1 leave per week</p>
+                    <p>• No salary deduction</p>
+                  </div>
+                  <div className="space-y-2">
+                    <p><strong>Sick Leave:</strong> With medical proof</p>
+                    <p>• 50% salary deduction</p>
+                    <p><strong>Unplanned Leave:</strong></p>
+                    <p>• 100% salary deduction</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -274,11 +320,10 @@ export default function Leaves() {
                       {(role === "admin" || role === "manager") && (
                         <TableHead>Employee</TableHead>
                       )}
-                      <TableHead>Start Date</TableHead>
-                      <TableHead>End Date</TableHead>
+                      <TableHead>Dates</TableHead>
                       <TableHead>Days</TableHead>
-                      <TableHead>Reason</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
                       {(role === "admin" || role === "manager") && (
                         <TableHead className="text-right">Actions</TableHead>
@@ -287,43 +332,43 @@ export default function Leaves() {
                   </TableHeader>
                   <TableBody>
                     {leaves.map((leave) => (
-                      <TableRow key={leave.id}>
+                      <TableRow key={leave.id} className={leave.auto_rejected ? "bg-destructive/5" : ""}>
                         {(role === "admin" || role === "manager") && (
                           <TableCell className="font-medium">{leave.employee_name || "-"}</TableCell>
                         )}
-                        <TableCell>{format(new Date(leave.start_date), "MMM dd, yyyy")}</TableCell>
-                        <TableCell>{format(new Date(leave.end_date), "MMM dd, yyyy")}</TableCell>
-                        <TableCell>{calculateDays(leave.start_date, leave.end_date)}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{leave.reason}</TableCell>
                         <TableCell>
-                          {leave.is_emergency ? (
-                            <Badge variant="destructive">Emergency</Badge>
-                          ) : (
-                            <Badge variant="outline">Regular</Badge>
+                          <div className="text-sm">
+                            {format(new Date(leave.start_date), "MMM dd")} - {format(new Date(leave.end_date), "MMM dd, yyyy")}
+                          </div>
+                          {leave.is_half_day && (
+                            <div className="text-xs text-muted-foreground">
+                              {leave.half_day_type === "first_half" ? "Morning" : "Afternoon"}
+                            </div>
                           )}
                         </TableCell>
-                        <TableCell>{getStatusBadge(leave.status || "pending")}</TableCell>
+                        <TableCell>
+                          {leave.working_days_count || 1}
+                          {leave.is_half_day && " (half)"}
+                        </TableCell>
+                        <TableCell>{getLeaveTypeBadge(leave)}</TableCell>
+                        <TableCell className="max-w-[200px]">
+                          <div className="truncate" title={leave.reason}>{leave.reason}</div>
+                          {leave.auto_rejection_reason && (
+                            <div className="text-xs text-destructive mt-1">{leave.auto_rejection_reason}</div>
+                          )}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(leave)}</TableCell>
                         {(role === "admin" || role === "manager") && (
                           <TableCell className="text-right">
-                            {leave.status === "pending" && (
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleApprove(leave.id)}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-1" />
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleReject(leave.id)}
-                                >
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Reject
-                                </Button>
-                              </div>
+                            {leave.status === "pending" && !leave.auto_rejected && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openApprovalDialog(leave)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Review
+                              </Button>
                             )}
                           </TableCell>
                         )}
@@ -336,6 +381,33 @@ export default function Leaves() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Leave Application Form Dialog */}
+      {user && (
+        <LeaveApplicationForm
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onSuccess={() => {
+            fetchLeaves();
+            fetchLeaveBalance();
+            toast({
+              title: "Leave Applied",
+              description: "Your leave request has been submitted.",
+            });
+          }}
+          userId={user.id}
+          casualLeavesRemaining={casualRemaining}
+        />
+      )}
+
+      {/* Leave Approval Dialog */}
+      <LeaveApprovalDialog
+        leave={selectedLeave}
+        open={approvalDialogOpen}
+        onOpenChange={setApprovalDialogOpen}
+        onApprove={handleApprove}
+        onReject={handleReject}
+      />
     </DashboardLayout>
   );
 }
