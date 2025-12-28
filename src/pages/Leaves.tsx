@@ -17,9 +17,13 @@ import { Database } from "@/integrations/supabase/types";
 
 type Leave = Database["public"]["Tables"]["leaves"]["Row"];
 
+interface LeaveWithEmployee extends Leave {
+  employee_name?: string;
+}
+
 export default function Leaves() {
   const { user, role } = useAuth();
-  const [leaves, setLeaves] = useState<Leave[]>([]);
+  const [leaves, setLeaves] = useState<LeaveWithEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -32,17 +36,38 @@ export default function Leaves() {
 
   useEffect(() => {
     fetchLeaves();
-  }, []);
+  }, [role]);
 
   const fetchLeaves = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: leavesData, error } = await supabase
         .from("leaves")
         .select("*")
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setLeaves(data || []);
+
+      // For managers and admins, fetch employee names
+      if ((role === "admin" || role === "manager") && leavesData && leavesData.length > 0) {
+        const userIds = [...new Set(leavesData.map(l => l.user_id))];
+        const { data: profiles } = await supabase
+          .from("employee_profiles")
+          .select("user_id, first_name, last_name")
+          .in("user_id", userIds);
+
+        const profileMap = new Map(
+          profiles?.map(p => [p.user_id, `${p.first_name} ${p.last_name}`]) || []
+        );
+
+        const leavesWithNames = leavesData.map(leave => ({
+          ...leave,
+          employee_name: profileMap.get(leave.user_id) || "Unknown",
+        }));
+
+        setLeaves(leavesWithNames);
+      } else {
+        setLeaves(leavesData || []);
+      }
     } catch (error) {
       console.error("Error fetching leaves:", error);
       toast({
@@ -246,6 +271,9 @@ export default function Leaves() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {(role === "admin" || role === "manager") && (
+                        <TableHead>Employee</TableHead>
+                      )}
                       <TableHead>Start Date</TableHead>
                       <TableHead>End Date</TableHead>
                       <TableHead>Days</TableHead>
@@ -260,6 +288,9 @@ export default function Leaves() {
                   <TableBody>
                     {leaves.map((leave) => (
                       <TableRow key={leave.id}>
+                        {(role === "admin" || role === "manager") && (
+                          <TableCell className="font-medium">{leave.employee_name || "-"}</TableCell>
+                        )}
                         <TableCell>{format(new Date(leave.start_date), "MMM dd, yyyy")}</TableCell>
                         <TableCell>{format(new Date(leave.end_date), "MMM dd, yyyy")}</TableCell>
                         <TableCell>{calculateDays(leave.start_date, leave.end_date)}</TableCell>
