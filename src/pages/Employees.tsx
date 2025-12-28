@@ -434,13 +434,15 @@ export default function Employees() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => navigate(`/employee/${employee.id}`)}
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
+                            {(role === "admin" || role === "manager") && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => navigate(`/employee/${employee.id}`)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            )}
                             {role === "admin" && (
                               <>
                                 <Button
