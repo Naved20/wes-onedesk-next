@@ -151,14 +151,22 @@ const handler = async (req: Request): Promise<Response> => {
       console.error("Role assignment error:", roleInsertError);
     }
 
-    // If manager, create institution assignment
+    // If manager, create institution assignment using upsert to handle duplicates
     if (role === "manager" && institutionAssignment) {
-      await supabaseAdmin
+      const { error: managerInstError } = await supabaseAdmin
         .from("manager_institutions")
-        .insert({
+        .upsert({
           manager_user_id: newUser.user.id,
           institution_name: institutionAssignment,
+        }, {
+          onConflict: 'manager_user_id,institution_name'
         });
+      
+      if (managerInstError) {
+        console.error("Manager institution assignment error:", managerInstError);
+      } else {
+        console.log("Manager institution assigned successfully:", institutionAssignment);
+      }
     }
 
     return new Response(
