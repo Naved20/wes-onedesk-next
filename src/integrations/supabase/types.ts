@@ -694,18 +694,36 @@ export type Database = {
       salaries: {
         Row: {
           absent_days: number | null
+          approval_notes: string | null
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
           base_salary: number
           created_at: string
           final_salary: number | null
+          gross_salary: number | null
+          hra_amount: number | null
           id: string
           is_locked: boolean | null
           locked_at: string | null
           locked_by: string | null
+          manager_justification: string | null
+          manager_proposed_at: string | null
+          manager_proposed_by: string | null
+          manager_proposed_salary: number | null
           month: number
+          net_salary_calculated: number | null
+          net_salary_manual: number | null
+          other_deductions: number | null
           paid_leave_days: number | null
           per_day_salary: number | null
+          pf_deduction: number | null
           present_days: number | null
           processed_at: string | null
+          professional_tax: number | null
+          special_bonus: number | null
+          tds_deduction: number | null
+          travel_allowance: number | null
           updated_at: string
           user_id: string
           working_days: number
@@ -713,18 +731,36 @@ export type Database = {
         }
         Insert: {
           absent_days?: number | null
+          approval_notes?: string | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           base_salary: number
           created_at?: string
           final_salary?: number | null
+          gross_salary?: number | null
+          hra_amount?: number | null
           id?: string
           is_locked?: boolean | null
           locked_at?: string | null
           locked_by?: string | null
+          manager_justification?: string | null
+          manager_proposed_at?: string | null
+          manager_proposed_by?: string | null
+          manager_proposed_salary?: number | null
           month: number
+          net_salary_calculated?: number | null
+          net_salary_manual?: number | null
+          other_deductions?: number | null
           paid_leave_days?: number | null
           per_day_salary?: number | null
+          pf_deduction?: number | null
           present_days?: number | null
           processed_at?: string | null
+          professional_tax?: number | null
+          special_bonus?: number | null
+          tds_deduction?: number | null
+          travel_allowance?: number | null
           updated_at?: string
           user_id: string
           working_days: number
@@ -732,22 +768,73 @@ export type Database = {
         }
         Update: {
           absent_days?: number | null
+          approval_notes?: string | null
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
           base_salary?: number
           created_at?: string
           final_salary?: number | null
+          gross_salary?: number | null
+          hra_amount?: number | null
           id?: string
           is_locked?: boolean | null
           locked_at?: string | null
           locked_by?: string | null
+          manager_justification?: string | null
+          manager_proposed_at?: string | null
+          manager_proposed_by?: string | null
+          manager_proposed_salary?: number | null
           month?: number
+          net_salary_calculated?: number | null
+          net_salary_manual?: number | null
+          other_deductions?: number | null
           paid_leave_days?: number | null
           per_day_salary?: number | null
+          pf_deduction?: number | null
           present_days?: number | null
           processed_at?: string | null
+          professional_tax?: number | null
+          special_bonus?: number | null
+          tds_deduction?: number | null
+          travel_allowance?: number | null
           updated_at?: string
           user_id?: string
           working_days?: number
           year?: number
+        }
+        Relationships: []
+      }
+      salary_audit: {
+        Row: {
+          action: string
+          change_reason: string | null
+          changed_by: string
+          created_at: string | null
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          salary_id: string
+        }
+        Insert: {
+          action: string
+          change_reason?: string | null
+          changed_by: string
+          created_at?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          salary_id: string
+        }
+        Update: {
+          action?: string
+          change_reason?: string | null
+          changed_by?: string
+          created_at?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          salary_id?: string
         }
         Relationships: []
       }
@@ -784,6 +871,15 @@ export type Database = {
       calculate_monthly_working_days: {
         Args: { p_month: number; p_year: number }
         Returns: number
+      }
+      calculate_salary_breakdown: {
+        Args: {
+          p_base_salary: number
+          p_paid_leave_days?: number
+          p_present_days: number
+          p_working_days: number
+        }
+        Returns: Json
       }
       calculate_working_days: {
         Args: { p_end_date: string; p_start_date: string }
