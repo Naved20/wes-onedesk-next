@@ -593,8 +593,9 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                               <Button size="sm" variant="ghost" onClick={() => openHistoryDialog(salary)}>
                                 <History className="h-4 w-4" />
                               </Button>
-                              {isAdmin && !salary.is_locked && salary.approval_status === "pending_approval" && (
+                              {isAdmin && !salary.is_locked && (salary.approval_status === "pending_approval" || salary.approval_status === "draft") && (
                                 <Button size="sm" onClick={() => handleApprove(salary.id)} className="bg-green-600 hover:bg-green-700">
+                                  <CheckCircle className="h-4 w-4 mr-1" />
                                   Approve
                                 </Button>
                               )}
