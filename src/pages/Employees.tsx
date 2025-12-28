@@ -29,6 +29,10 @@ import { z } from "zod";
 type EmployeeProfile = Database["public"]["Tables"]["employee_profiles"]["Row"];
 type AppRole = Database["public"]["Enums"]["app_role"];
 
+interface EmployeeWithRole extends EmployeeProfile {
+  role?: AppRole;
+}
+
 const createUserSchema = z.object({
   email: z.string().trim().email("Please enter a valid email").max(255),
   password: z.string().min(6, "Password must be at least 6 characters").max(100),
@@ -40,7 +44,7 @@ const createUserSchema = z.object({
 export default function Employees() {
   const { role } = useAuth();
   const navigate = useNavigate();
-  const [employees, setEmployees] = useState<EmployeeProfile[]>([]);
+  const [employees, setEmployees] = useState<EmployeeWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -71,13 +75,32 @@ export default function Employees() {
 
   const fetchEmployees = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: profilesData, error: profilesError } = await supabase
         .from("employee_profiles")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setEmployees(data || []);
+      if (profilesError) throw profilesError;
+
+      if (profilesData && profilesData.length > 0) {
+        // Fetch roles for all employees
+        const userIds = profilesData.map(p => p.user_id);
+        const { data: rolesData } = await supabase
+          .from("user_roles")
+          .select("user_id, role")
+          .in("user_id", userIds);
+
+        const roleMap = new Map(rolesData?.map(r => [r.user_id, r.role]) || []);
+        
+        const employeesWithRoles: EmployeeWithRole[] = profilesData.map(profile => ({
+          ...profile,
+          role: roleMap.get(profile.user_id),
+        }));
+        
+        setEmployees(employeesWithRoles);
+      } else {
+        setEmployees([]);
+      }
     } catch (error) {
       console.error("Error fetching employees:", error);
       toast({
@@ -414,6 +437,7 @@ export default function Employees() {
                       <TableHead>Email</TableHead>
                       <TableHead>Designation</TableHead>
                       <TableHead>Institution</TableHead>
+                      <TableHead>Role</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
@@ -427,6 +451,19 @@ export default function Employees() {
                         <TableCell>{employee.email}</TableCell>
                         <TableCell>{employee.designation || "-"}</TableCell>
                         <TableCell>{employee.institution_assignment || "-"}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={
+                              employee.role === "admin" 
+                                ? "destructive" 
+                                : employee.role === "manager" 
+                                  ? "default" 
+                                  : "secondary"
+                            }
+                          >
+                            {employee.role ? employee.role.charAt(0).toUpperCase() + employee.role.slice(1) : "-"}
+                          </Badge>
+                        </TableCell>
                         <TableCell>
                           <Badge variant={employee.is_active ? "default" : "secondary"}>
                             {employee.is_active ? "Active" : "Inactive"}

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { format } from "date-fns";
+import { useEffect, useState, useMemo } from "react";
+import { format, startOfMonth, endOfMonth, isSameDay } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Calendar } from "@/components/ui/calendar";
 import { toast } from "@/hooks/use-toast";
-import { Clock, CheckCircle, XCircle } from "lucide-react";
+import { Clock, CheckCircle, XCircle, CalendarDays, TrendingUp, AlertCircle } from "lucide-react";
 import { Database } from "@/integrations/supabase/types";
 
 type Attendance = Database["public"]["Tables"]["attendance"]["Row"];
@@ -17,12 +18,20 @@ interface AttendanceWithEmployee extends Attendance {
   employee_name?: string;
 }
 
+interface AttendanceStats {
+  totalPresent: number;
+  totalPending: number;
+  totalRejected: number;
+  totalRecords: number;
+}
+
 export default function Attendance() {
   const { user, role } = useAuth();
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceWithEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState(false);
   const [todayCheckedIn, setTodayCheckedIn] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
 
   useEffect(() => {
     fetchAttendance();
@@ -35,7 +44,7 @@ export default function Attendance() {
         .from("attendance")
         .select("*")
         .order("date", { ascending: false })
-        .limit(50);
+        .limit(100);
 
       if (error) throw error;
 
@@ -85,6 +94,44 @@ export default function Attendance() {
 
     setTodayCheckedIn(!!data);
   };
+
+  // Calculate statistics for current month
+  const stats: AttendanceStats = useMemo(() => {
+    const monthStart = startOfMonth(selectedMonth);
+    const monthEnd = endOfMonth(selectedMonth);
+    
+    const monthRecords = attendanceRecords.filter(record => {
+      const recordDate = new Date(record.date);
+      return recordDate >= monthStart && recordDate <= monthEnd;
+    });
+
+    return {
+      totalPresent: monthRecords.filter(r => r.status === "approved").length,
+      totalPending: monthRecords.filter(r => r.status === "pending").length,
+      totalRejected: monthRecords.filter(r => r.status === "rejected").length,
+      totalRecords: monthRecords.length,
+    };
+  }, [attendanceRecords, selectedMonth]);
+
+  // Get dates for calendar highlighting
+  const calendarModifiers = useMemo(() => {
+    const approved: Date[] = [];
+    const pending: Date[] = [];
+    const rejected: Date[] = [];
+
+    attendanceRecords.forEach(record => {
+      const date = new Date(record.date);
+      if (record.status === "approved") {
+        approved.push(date);
+      } else if (record.status === "pending") {
+        pending.push(date);
+      } else if (record.status === "rejected") {
+        rejected.push(date);
+      }
+    });
+
+    return { approved, pending, rejected };
+  }, [attendanceRecords]);
 
   const handleCheckIn = async () => {
     if (!user) return;
@@ -170,6 +217,25 @@ export default function Attendance() {
     }
   };
 
+  // Custom day content for calendar
+  const modifiersStyles = {
+    approved: { 
+      backgroundColor: "hsl(var(--chart-2))", 
+      color: "hsl(var(--primary-foreground))",
+      borderRadius: "50%"
+    },
+    pending: { 
+      backgroundColor: "hsl(var(--chart-4))", 
+      color: "hsl(var(--primary-foreground))",
+      borderRadius: "50%"
+    },
+    rejected: { 
+      backgroundColor: "hsl(var(--destructive))", 
+      color: "hsl(var(--destructive-foreground))",
+      borderRadius: "50%"
+    },
+  };
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -186,84 +252,180 @@ export default function Attendance() {
           )}
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {role === "employee" ? "My Attendance Records" : "Attendance Records"}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center py-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalPresent}</p>
+                  <p className="text-sm text-muted-foreground">Days Present</p>
+                </div>
               </div>
-            ) : attendanceRecords.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                No attendance records found
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalPending}</p>
+                  <p className="text-sm text-muted-foreground">Pending</p>
+                </div>
               </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {(role === "admin" || role === "manager") && (
-                        <TableHead>Employee</TableHead>
-                      )}
-                      <TableHead>Date</TableHead>
-                      <TableHead>Check-in Time</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Notes</TableHead>
-                      {(role === "admin" || role === "manager") && (
-                        <TableHead className="text-right">Actions</TableHead>
-                      )}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {attendanceRecords.map((record) => (
-                      <TableRow key={record.id}>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
+                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalRejected}</p>
+                  <p className="text-sm text-muted-foreground">Rejected</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.totalRecords}</p>
+                  <p className="text-sm text-muted-foreground">Total Records</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Calendar and Table Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Calendar Card */}
+          <Card className="lg:col-span-1">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5" />
+                Attendance Calendar
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Calendar
+                mode="single"
+                month={selectedMonth}
+                onMonthChange={setSelectedMonth}
+                modifiers={{
+                  approved: (date) => calendarModifiers.approved.some(d => isSameDay(d, date)),
+                  pending: (date) => calendarModifiers.pending.some(d => isSameDay(d, date)),
+                  rejected: (date) => calendarModifiers.rejected.some(d => isSameDay(d, date)),
+                }}
+                modifiersStyles={modifiersStyles}
+                className="pointer-events-auto"
+              />
+              <div className="mt-4 flex flex-wrap gap-3 text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <span>Approved</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                  <span>Pending</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-500" />
+                  <span>Rejected</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Table Card */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>
+                {role === "employee" ? "My Attendance Records" : "Attendance Records"}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                </div>
+              ) : attendanceRecords.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No attendance records found
+                </div>
+              ) : (
+                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
                         {(role === "admin" || role === "manager") && (
-                          <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                          <TableHead>Employee</TableHead>
                         )}
-                        <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
-                        <TableCell>
-                          {record.check_in_time
-                            ? format(new Date(record.check_in_time), "hh:mm a")
-                            : "-"}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(record.status || "pending")}</TableCell>
-                        <TableCell>{record.notes || "-"}</TableCell>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Check-in Time</TableHead>
+                        <TableHead>Status</TableHead>
                         {(role === "admin" || role === "manager") && (
-                          <TableCell className="text-right">
-                            {record.status === "pending" && (
-                              <div className="flex justify-end gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleApprove(record.id)}
-                                >
-                                  <CheckCircle className="h-4 w-4 mr-1" />
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => handleReject(record.id)}
-                                >
-                                  <XCircle className="h-4 w-4 mr-1" />
-                                  Reject
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
+                          <TableHead className="text-right">Actions</TableHead>
                         )}
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </TableHeader>
+                    <TableBody>
+                      {attendanceRecords.map((record) => (
+                        <TableRow key={record.id}>
+                          {(role === "admin" || role === "manager") && (
+                            <TableCell className="font-medium">{record.employee_name || "-"}</TableCell>
+                          )}
+                          <TableCell>{format(new Date(record.date), "MMM dd, yyyy")}</TableCell>
+                          <TableCell>
+                            {record.check_in_time
+                              ? format(new Date(record.check_in_time), "hh:mm a")
+                              : "-"}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(record.status || "pending")}</TableCell>
+                          {(role === "admin" || role === "manager") && (
+                            <TableCell className="text-right">
+                              {record.status === "pending" && (
+                                <div className="flex justify-end gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleApprove(record.id)}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-1" />
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleReject(record.id)}
+                                  >
+                                    <XCircle className="h-4 w-4 mr-1" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </DashboardLayout>
   );
