@@ -895,6 +895,10 @@ export type Database = {
         }
         Returns: Json
       }
+      generate_monthly_salaries: {
+        Args: { p_month: number; p_year: number }
+        Returns: Json
+      }
       get_casual_leave_count: {
         Args: { p_month: number; p_user_id: string; p_year: number }
         Returns: number

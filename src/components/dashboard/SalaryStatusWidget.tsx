@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { DollarSign, Clock, CheckCircle, Lock, ArrowRight, AlertCircle } from "lucide-react";
+import { DollarSign, Clock, CheckCircle, Lock, ArrowRight, AlertCircle, Plus, RefreshCw } from "lucide-react";
 
 interface SalaryStats {
   total: number;
@@ -48,6 +48,7 @@ export function SalaryStatusWidget({ userId, isAdmin }: SalaryStatusWidgetProps)
   });
   const [pendingSalaries, setPendingSalaries] = useState<PendingSalary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedSalary, setSelectedSalary] = useState<PendingSalary | null>(null);
   const [netSalaryInput, setNetSalaryInput] = useState<string>("");
@@ -114,6 +115,36 @@ export function SalaryStatusWidget({ userId, isAdmin }: SalaryStatusWidgetProps)
       console.error("Error fetching salary stats:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateMonthlySalaries = async () => {
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.rpc("generate_monthly_salaries", {
+        p_year: currentYear,
+        p_month: currentMonth,
+      });
+
+      if (error) throw error;
+
+      const result = data as { created: number; skipped: number; working_days: number };
+      
+      toast({
+        title: "Salaries Generated",
+        description: `Created ${result.created} new records, ${result.skipped} already existed.`,
+      });
+      
+      fetchSalaryStats();
+    } catch (error) {
+      console.error("Error generating salaries:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate salary records",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -280,6 +311,22 @@ export function SalaryStatusWidget({ userId, isAdmin }: SalaryStatusWidgetProps)
             </div>
           </div>
 
+          {/* Generate Salaries Button - show if no records exist */}
+          {isAdmin && stats.total === 0 && (
+            <Button 
+              className="w-full" 
+              onClick={generateMonthlySalaries} 
+              disabled={generating}
+            >
+              {generating ? (
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4 mr-2" />
+              )}
+              Generate This Month's Salaries
+            </Button>
+          )}
+
           {/* Pending approvals for admin */}
           {isAdmin && pendingSalaries.length > 0 && (
             <div className="border-t pt-3 space-y-2">
@@ -325,6 +372,9 @@ export function SalaryStatusWidget({ userId, isAdmin }: SalaryStatusWidgetProps)
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Set Net Salary</DialogTitle>
+            <DialogDescription>
+              Enter the final net salary for this employee
+            </DialogDescription>
           </DialogHeader>
           {selectedSalary && (
             <div className="space-y-4">
