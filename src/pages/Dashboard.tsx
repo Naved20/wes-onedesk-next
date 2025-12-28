@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { SalaryStatusWidget } from "@/components/dashboard/SalaryStatusWidget";
 import { Users, Clock, Calendar, DollarSign, Bell, FileText, Building } from "lucide-react";
 
 interface DashboardStats {
@@ -16,7 +17,7 @@ interface DashboardStats {
 }
 
 export default function Dashboard() {
-  const { role, loading } = useAuth();
+  const { role, loading, user } = useAuth();
   const navigate = useNavigate();
   const [stats, setStats] = useState<DashboardStats>({
     totalEmployees: 0,
@@ -36,12 +37,16 @@ export default function Dashboard() {
 
   const fetchDashboardStats = async () => {
     try {
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+
       // Fetch stats based on role
       const [
         employeesResult,
         attendanceResult,
         leavesResult,
         announcementsResult,
+        salariesResult,
       ] = await Promise.all([
         role === "admin" || role === "manager"
           ? supabase.from("employee_profiles").select("id", { count: "exact" })
@@ -49,13 +54,22 @@ export default function Dashboard() {
         supabase.from("attendance").select("id", { count: "exact" }).eq("status", "pending"),
         supabase.from("leaves").select("id", { count: "exact" }).eq("status", "pending"),
         supabase.from("announcements").select("id", { count: "exact" }).eq("is_active", true),
+        role === "admin"
+          ? supabase
+              .from("salaries")
+              .select("id", { count: "exact" })
+              .eq("month", currentMonth)
+              .eq("year", currentYear)
+              .eq("approval_status", "pending_approval")
+              .eq("is_locked", false)
+          : Promise.resolve({ count: 0 }),
       ]);
 
       setStats({
         totalEmployees: employeesResult.count || 0,
         pendingAttendance: attendanceResult.count || 0,
         pendingLeaves: leavesResult.count || 0,
-        pendingSalaries: 0,
+        pendingSalaries: salariesResult.count || 0,
         activeAnnouncements: announcementsResult.count || 0,
         pendingDocuments: 0,
       });
@@ -226,6 +240,13 @@ export default function Dashboard() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {/* Salary Status Widget for Admin/Manager */}
+        {(role === "admin" || role === "manager") && user && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <SalaryStatusWidget userId={user.id} isAdmin={role === "admin"} />
           </div>
         )}
 
