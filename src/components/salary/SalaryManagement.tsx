@@ -12,7 +12,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "@/hooks/use-toast";
-import { DollarSign, Lock, Unlock, FileText, Download, CheckCircle, Clock, AlertCircle, Calculator } from "lucide-react";
+import { DollarSign, Lock, Unlock, Download, CheckCircle, Clock, AlertCircle, Calculator, RefreshCw, Plus, History } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Employee {
   user_id: string;
@@ -53,6 +54,16 @@ interface SalaryRecord {
   employee_name?: string;
 }
 
+interface AuditRecord {
+  id: string;
+  action: string;
+  old_data: unknown | null;
+  new_data: unknown | null;
+  changed_by: string;
+  change_reason: string | null;
+  created_at: string;
+}
+
 interface SalaryManagementProps {
   userId: string;
   isAdmin: boolean;
@@ -63,10 +74,15 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [salaryRecords, setSalaryRecords] = useState<SalaryRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [unlockDialogOpen, setUnlockDialogOpen] = useState(false);
   const [selectedSalary, setSelectedSalary] = useState<SalaryRecord | null>(null);
+  const [auditHistory, setAuditHistory] = useState<AuditRecord[]>([]);
+  const [unlockReason, setUnlockReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form state
@@ -133,7 +149,8 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
     fetchData();
   }, [fetchData]);
 
-  const calculateSalary = () => {
+  // Live calculation based on form data
+  const calculateSalary = useCallback(() => {
     const perDaySalary = formData.working_days > 0 ? formData.base_salary / formData.working_days : 0;
     const effectiveDays = formData.present_days + formData.paid_leave_days;
     const basicEarned = perDaySalary * effectiveDays;
@@ -143,9 +160,41 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
 
     return {
       per_day_salary: Math.round(perDaySalary * 100) / 100,
+      basic_earned: Math.round(basicEarned * 100) / 100,
       gross_salary: Math.round(grossSalary * 100) / 100,
+      total_deductions: Math.round(totalDeductions * 100) / 100,
       net_salary_calculated: Math.round(netSalary * 100) / 100,
     };
+  }, [formData]);
+
+  const generateMonthlySalaries = async () => {
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.rpc("generate_monthly_salaries", {
+        p_year: selectedYear,
+        p_month: selectedMonth,
+      });
+
+      if (error) throw error;
+
+      const result = data as { created: number; skipped: number; working_days: number };
+      
+      toast({
+        title: "Salaries Generated",
+        description: `Created ${result.created} new records, ${result.skipped} already existed. Working days: ${result.working_days}`,
+      });
+      
+      fetchData();
+    } catch (error) {
+      console.error("Error generating salaries:", error);
+      toast({
+        title: "Error",
+        description: "Failed to generate salary records",
+        variant: "destructive",
+      });
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const openEditDialog = (salary: SalaryRecord) => {
@@ -166,6 +215,34 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
       manager_justification: salary.manager_justification || "",
     });
     setEditDialogOpen(true);
+  };
+
+  const openHistoryDialog = async (salary: SalaryRecord) => {
+    setSelectedSalary(salary);
+    try {
+      const { data, error } = await supabase
+        .from("salary_audit")
+        .select("*")
+        .eq("salary_id", salary.id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setAuditHistory(data || []);
+      setHistoryDialogOpen(true);
+    } catch (error) {
+      console.error("Error fetching audit history:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load audit history",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const openUnlockDialog = (salary: SalaryRecord) => {
+    setSelectedSalary(salary);
+    setUnlockReason("");
+    setUnlockDialogOpen(true);
   };
 
   const handleSave = async () => {
@@ -195,13 +272,20 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
         updated_at: new Date().toISOString(),
       };
 
-      // If manager is proposing salary
+      // If manager is proposing salary (not admin)
       if (isManager && !isAdmin && formData.net_salary_manual) {
         updateData.manager_proposed_salary = formData.net_salary_manual;
         updateData.manager_proposed_by = userId;
         updateData.manager_proposed_at = new Date().toISOString();
         updateData.manager_justification = formData.manager_justification;
         updateData.approval_status = "pending_approval";
+      }
+
+      // Admin directly sets and approves
+      if (isAdmin && formData.net_salary_manual) {
+        updateData.approval_status = "approved";
+        updateData.approved_by = userId;
+        updateData.approved_at = new Date().toISOString();
       }
 
       const { error } = await supabase
@@ -213,7 +297,9 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
 
       toast({
         title: "Success",
-        description: "Salary record updated successfully",
+        description: isAdmin && formData.net_salary_manual 
+          ? "Salary updated and approved" 
+          : "Salary record updated successfully",
       });
       setEditDialogOpen(false);
       fetchData();
@@ -286,7 +372,16 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
     }
   };
 
-  const handleUnlock = async (salaryId: string) => {
+  const handleUnlock = async () => {
+    if (!selectedSalary || !unlockReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide a reason for unlocking",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from("salaries")
@@ -294,8 +389,9 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
           is_locked: false,
           locked_by: null,
           locked_at: null,
+          approval_notes: `Unlocked by admin: ${unlockReason}`,
         })
-        .eq("id", salaryId);
+        .eq("id", selectedSalary.id);
 
       if (error) throw error;
 
@@ -303,6 +399,7 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
         title: "Success",
         description: "Salary unlocked successfully",
       });
+      setUnlockDialogOpen(false);
       fetchData();
     } catch (error) {
       console.error("Error unlocking salary:", error);
@@ -375,11 +472,19 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
     }
   };
 
+  const canEditSalary = (salary: SalaryRecord) => {
+    // Admin can edit any salary including locked (via unlock first)
+    if (isAdmin) return !salary.is_locked;
+    // Manager can edit unlocked salaries
+    if (isManager) return !salary.is_locked;
+    return false;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with filters */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-        <div className="flex gap-4">
+        <div className="flex gap-4 flex-wrap">
           <Select value={String(selectedMonth)} onValueChange={(v) => setSelectedMonth(Number(v))}>
             <SelectTrigger className="w-40">
               <SelectValue placeholder="Month" />
@@ -400,6 +505,10 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
               ))}
             </SelectContent>
           </Select>
+          <Button variant="outline" onClick={generateMonthlySalaries} disabled={generating}>
+            {generating ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+            Generate Salaries
+          </Button>
         </div>
         <Button variant="outline" onClick={exportToCSV}>
           <Download className="h-4 w-4 mr-2" />
@@ -440,6 +549,9 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                 <div className="text-center py-8 text-muted-foreground">
                   <DollarSign className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
                   <p>No salary records for this period</p>
+                  <Button variant="outline" className="mt-4" onClick={generateMonthlySalaries} disabled={generating}>
+                    {generating ? "Generating..." : "Generate Salary Records"}
+                  </Button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -473,11 +585,14 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                           <TableCell>{getStatusBadge(salary)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              {!salary.is_locked && (
+                              {canEditSalary(salary) && (
                                 <Button size="sm" variant="outline" onClick={() => openEditDialog(salary)}>
                                   <Calculator className="h-4 w-4" />
                                 </Button>
                               )}
+                              <Button size="sm" variant="ghost" onClick={() => openHistoryDialog(salary)}>
+                                <History className="h-4 w-4" />
+                              </Button>
                               {isAdmin && !salary.is_locked && salary.approval_status === "pending_approval" && (
                                 <Button size="sm" onClick={() => handleApprove(salary.id)} className="bg-green-600 hover:bg-green-700">
                                   Approve
@@ -490,7 +605,7 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                                 </Button>
                               )}
                               {isAdmin && salary.is_locked && (
-                                <Button size="sm" variant="outline" onClick={() => handleUnlock(salary.id)}>
+                                <Button size="sm" variant="outline" onClick={() => openUnlockDialog(salary)}>
                                   <Unlock className="h-4 w-4 mr-1" />
                                   Unlock
                                 </Button>
@@ -537,10 +652,15 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                         </TableCell>
                         <TableCell className="max-w-[200px] truncate">{salary.manager_justification}</TableCell>
                         <TableCell className="text-right">
-                          <Button size="sm" onClick={() => handleApprove(salary.id)} className="bg-green-600 hover:bg-green-700">
-                            <CheckCircle className="h-4 w-4 mr-1" />
-                            Approve
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            <Button size="sm" variant="outline" onClick={() => openEditDialog(salary)}>
+                              Edit
+                            </Button>
+                            <Button size="sm" onClick={() => handleApprove(salary.id)} className="bg-green-600 hover:bg-green-700">
+                              <CheckCircle className="h-4 w-4 mr-1" />
+                              Approve
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -554,18 +674,18 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
 
       {/* Edit Salary Dialog */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calculator className="h-5 w-5" />
               Edit Salary - {selectedSalary?.employee_name}
             </DialogTitle>
             <DialogDescription>
-              {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+              {months.find(m => m.value === selectedMonth)?.label} {selectedYear} | {isAdmin ? "Full Admin Access" : "Manager Edit"}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Earnings Section */}
             <div className="space-y-4">
               <h4 className="font-semibold text-sm border-b pb-2">Earnings</h4>
@@ -669,15 +789,27 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
                 </div>
               </div>
 
-              {/* Summary */}
+              {/* Live Calculation Preview */}
               <div className="mt-4 p-4 bg-muted rounded-lg space-y-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Calculator className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">Live Calculation</span>
+                </div>
                 <div className="flex justify-between text-sm">
                   <span>Per Day Salary:</span>
                   <span className="font-medium">₹{calculated.per_day_salary.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-sm">
+                  <span>Basic Earned:</span>
+                  <span className="font-medium">₹{calculated.basic_earned.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
                   <span>Gross Salary:</span>
                   <span className="font-medium">₹{calculated.gross_salary.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Total Deductions:</span>
+                  <span className="font-medium text-destructive">-₹{calculated.total_deductions.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between font-semibold border-t pt-2">
                   <span>Calculated Net:</span>
@@ -687,24 +819,30 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
             </div>
           </div>
 
-          {/* Manual Net Salary Override */}
+          {/* Direct Net Salary Input - Both Admin and Manager */}
           <div className="border-t pt-4 space-y-4">
-            <div>
-              <Label>Manual Net Salary Override (Optional)</Label>
-              <Input
-                type="number"
-                placeholder="Leave empty to use calculated value"
-                value={formData.net_salary_manual || ""}
-                onChange={(e) => setFormData(p => ({ ...p, net_salary_manual: e.target.value ? Number(e.target.value) : null }))}
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Enter a value to override the calculated net salary
+            <div className="p-4 border rounded-lg bg-primary/5">
+              <Label className="text-base font-semibold">Direct Net Salary Input</Label>
+              <p className="text-xs text-muted-foreground mb-3">
+                {isAdmin 
+                  ? "As admin, entering a value here will override calculations and auto-approve"
+                  : "Enter the final net salary you want to set (will be submitted for admin approval)"}
               </p>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">₹</span>
+                <Input
+                  type="number"
+                  className="text-lg font-semibold"
+                  placeholder="Enter net salary"
+                  value={formData.net_salary_manual || ""}
+                  onChange={(e) => setFormData(p => ({ ...p, net_salary_manual: e.target.value ? Number(e.target.value) : null }))}
+                />
+              </div>
             </div>
 
             {isManager && !isAdmin && formData.net_salary_manual && (
               <div>
-                <Label>Justification (Required for manager proposals)</Label>
+                <Label>Justification (Required)</Label>
                 <Textarea
                   placeholder="Explain why you're proposing this salary amount..."
                   value={formData.manager_justification}
@@ -717,11 +855,13 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
             {formData.net_salary_manual && (
               <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm">Calculated vs Manual Difference:</span>
+                  <span className="text-sm">Difference from Calculated:</span>
                   <span className={`font-semibold ${
                     formData.net_salary_manual > calculated.net_salary_calculated 
                       ? "text-green-600" 
-                      : "text-red-600"
+                      : formData.net_salary_manual < calculated.net_salary_calculated
+                      ? "text-red-600"
+                      : "text-muted-foreground"
                   }`}>
                     {formData.net_salary_manual > calculated.net_salary_calculated ? "+" : ""}
                     ₹{(formData.net_salary_manual - calculated.net_salary_calculated).toLocaleString()}
@@ -736,7 +876,101 @@ export function SalaryManagement({ userId, isAdmin, isManager }: SalaryManagemen
               Cancel
             </Button>
             <Button onClick={handleSave} disabled={isSubmitting}>
-              {isManager && !isAdmin && formData.net_salary_manual ? "Submit for Approval" : "Save Changes"}
+              {isSubmitting ? "Saving..." : 
+                isAdmin && formData.net_salary_manual ? "Save & Approve" :
+                isManager && !isAdmin && formData.net_salary_manual ? "Submit for Approval" : 
+                "Save Changes"
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Audit History Dialog */}
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <History className="h-5 w-5" />
+              Salary History - {selectedSalary?.employee_name}
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[400px]">
+            {auditHistory.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <History className="h-12 w-12 mx-auto mb-2 text-muted-foreground/50" />
+                <p>No changes recorded yet</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {auditHistory.map((record) => (
+                  <div key={record.id} className="border rounded-lg p-3">
+                    <div className="flex justify-between items-start">
+                      <Badge variant="outline" className="capitalize">{record.action}</Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {format(new Date(record.created_at), "MMM dd, yyyy HH:mm")}
+                      </span>
+                    </div>
+                    {record.change_reason && (
+                      <p className="text-sm mt-2 text-muted-foreground">{record.change_reason}</p>
+                    )}
+                    {record.new_data && typeof record.new_data === 'object' && (
+                      <div className="mt-2 text-xs">
+                        <span className="font-medium">New Net: </span>
+                        ₹{((record.new_data as Record<string, unknown>).final_salary as number || 0).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHistoryDialogOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unlock Confirmation Dialog */}
+      <Dialog open={unlockDialogOpen} onOpenChange={setUnlockDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-yellow-600">
+              <Unlock className="h-5 w-5" />
+              Unlock Salary Record
+            </DialogTitle>
+            <DialogDescription>
+              Unlocking will allow editing of this salary record. This action will be logged.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Employee</Label>
+              <div className="font-medium">{selectedSalary?.employee_name}</div>
+            </div>
+            <div>
+              <Label>Current Net Salary</Label>
+              <div className="font-medium">₹{(selectedSalary?.final_salary || 0).toLocaleString()}</div>
+            </div>
+            <div>
+              <Label>Reason for Unlocking (Required)</Label>
+              <Textarea
+                placeholder="Explain why this salary needs to be unlocked..."
+                value={unlockReason}
+                onChange={(e) => setUnlockReason(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUnlockDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleUnlock} disabled={!unlockReason.trim()}>
+              <Unlock className="h-4 w-4 mr-1" />
+              Confirm Unlock
             </Button>
           </DialogFooter>
         </DialogContent>
