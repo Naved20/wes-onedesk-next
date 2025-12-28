@@ -20,9 +20,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, Info, Loader2 } from "lucide-react";
+import { AlertTriangle, Info, Loader2, Calendar } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { differenceInDays, format, addDays, isSunday } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 type LeaveType = "casual" | "sick" | "unplanned" | "emergency";
 
@@ -51,6 +52,13 @@ export function LeaveApplicationForm({
   const [submitting, setSubmitting] = useState(false);
   const [validationMessage, setValidationMessage] = useState<{ type: "error" | "warning" | "info"; message: string } | null>(null);
   const [workingDays, setWorkingDays] = useState(0);
+
+  // For casual leave, auto-sync end date with start date (single day only)
+  useEffect(() => {
+    if (leaveType === "casual" && startDate) {
+      setEndDate(startDate);
+    }
+  }, [leaveType, startDate]);
 
   // Calculate working days when dates change
   useEffect(() => {
@@ -90,7 +98,7 @@ export function LeaveApplicationForm({
   // Validate leave request
   useEffect(() => {
     validateLeave();
-  }, [startDate, endDate, leaveType, isEmergency, workingDays]);
+  }, [startDate, endDate, leaveType, isEmergency, workingDays, casualLeavesRemaining]);
 
   const validateLeave = () => {
     if (!startDate) {
@@ -113,8 +121,27 @@ export function LeaveApplicationForm({
     }
 
     // Casual leave validations
-    if (leaveType === "casual" && !isEmergency) {
-      if (advanceDays < 3) {
+    if (leaveType === "casual") {
+      // Check if quota exhausted
+      if (casualLeavesRemaining <= 0) {
+        setValidationMessage({
+          type: "error",
+          message: "You have used all 2 casual leaves this month (0 remaining)",
+        });
+        return;
+      }
+
+      // Multi-day validation (should not happen with UI restrictions, but safety check)
+      if (startDate !== endDate) {
+        setValidationMessage({
+          type: "error",
+          message: "Casual leaves are limited to exactly 1 day per application",
+        });
+        return;
+      }
+
+      // 3-day advance notice (unless emergency)
+      if (!isEmergency && advanceDays < 3) {
         setValidationMessage({
           type: "error",
           message: "Casual leaves require minimum 3 days advance notice",
@@ -122,10 +149,11 @@ export function LeaveApplicationForm({
         return;
       }
 
-      if (workingDays > casualLeavesRemaining) {
+      // Show info about remaining leaves
+      if (casualLeavesRemaining === 1) {
         setValidationMessage({
-          type: "error",
-          message: `You only have ${casualLeavesRemaining} casual leave(s) remaining this month`,
+          type: "warning",
+          message: "This is your last casual leave for this month (1/2 remaining)",
         });
         return;
       }
@@ -163,6 +191,15 @@ export function LeaveApplicationForm({
 
   const handleSubmit = async () => {
     if (!startDate || !endDate || !reason.trim()) {
+      return;
+    }
+
+    // Final validation for casual leave
+    if (leaveType === "casual" && startDate !== endDate) {
+      setValidationMessage({
+        type: "error",
+        message: "Casual leaves must be single-day only",
+      });
       return;
     }
 
@@ -223,15 +260,35 @@ export function LeaveApplicationForm({
 
   const minStartDate = format(addDays(new Date(), leaveType === "casual" && !isEmergency ? 3 : 0), "yyyy-MM-dd");
 
+  const isCasualLeave = leaveType === "casual";
+  const isFormDisabled = isCasualLeave && casualLeavesRemaining <= 0;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Apply for Leave</DialogTitle>
-          <DialogDescription>
-            Fill in the details below. Casual leaves: {casualLeavesRemaining} remaining this month.
+          <DialogDescription className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            {isCasualLeave ? (
+              <span>
+                Casual leaves: <Badge variant={casualLeavesRemaining > 0 ? "secondary" : "destructive"}>{casualLeavesRemaining}/2 remaining</Badge>
+                <span className="text-xs ml-2">(1 day per application)</span>
+              </span>
+            ) : (
+              "Fill in the details for your leave request"
+            )}
           </DialogDescription>
         </DialogHeader>
+
+        {isFormDisabled && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              You have exhausted your casual leave quota (2/2 used). Please choose a different leave type.
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid gap-4 py-4">
           {/* Leave Type */}
@@ -242,21 +299,29 @@ export function LeaveApplicationForm({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="casual">Casual Leave (No deduction)</SelectItem>
+                <SelectItem value="casual" disabled={casualLeavesRemaining <= 0}>
+                  Casual Leave (No deduction) {casualLeavesRemaining <= 0 && "- Limit reached"}
+                </SelectItem>
                 <SelectItem value="sick">Sick Leave (50% deduction)</SelectItem>
                 <SelectItem value="unplanned">Unplanned Leave (100% deduction)</SelectItem>
                 <SelectItem value="emergency">Emergency Leave</SelectItem>
               </SelectContent>
             </Select>
+            {isCasualLeave && (
+              <p className="text-xs text-muted-foreground">
+                ⓘ Casual leaves are limited to exactly 1 day per application
+              </p>
+            )}
           </div>
 
-          {/* Emergency Checkbox */}
+          {/* Emergency Checkbox - only for casual */}
           {leaveType === "casual" && (
             <div className="flex items-center space-x-2">
               <Checkbox
                 id="emergency"
                 checked={isEmergency}
                 onCheckedChange={(checked) => setIsEmergency(checked === true)}
+                disabled={isFormDisabled}
               />
               <Label htmlFor="emergency" className="text-sm">
                 Mark as emergency (bypasses 3-day notice requirement)
@@ -264,32 +329,53 @@ export function LeaveApplicationForm({
             </div>
           )}
 
-          {/* Date Range */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Date Selection */}
+          {isCasualLeave ? (
+            // Single date picker for casual leave
             <div className="grid gap-2">
-              <Label>Start Date</Label>
+              <Label>Leave Date (Single Day Only)</Label>
               <Input
                 type="date"
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value);
-                  if (!endDate || e.target.value > endDate) {
-                    setEndDate(e.target.value);
-                  }
+                  setEndDate(e.target.value); // Auto-sync for casual
                 }}
                 min={minStartDate}
+                disabled={isFormDisabled}
               />
+              <p className="text-xs text-muted-foreground">
+                Casual leaves can only be applied for 1 day at a time
+              </p>
             </div>
-            <div className="grid gap-2">
-              <Label>End Date</Label>
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                min={startDate || minStartDate}
-              />
+          ) : (
+            // Date range for other leave types
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    if (!endDate || e.target.value > endDate) {
+                      setEndDate(e.target.value);
+                    }
+                  }}
+                  min={minStartDate}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={startDate || minStartDate}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Half Day Option */}
           <div className="flex items-center space-x-2">
@@ -297,10 +383,10 @@ export function LeaveApplicationForm({
               id="halfDay"
               checked={isHalfDay}
               onCheckedChange={(checked) => setIsHalfDay(checked === true)}
-              disabled={startDate !== endDate}
+              disabled={isFormDisabled || (!isCasualLeave && startDate !== endDate)}
             />
             <Label htmlFor="halfDay" className="text-sm">
-              Half day leave {startDate !== endDate && "(only for single day)"}
+              Half day leave {!isCasualLeave && startDate !== endDate && "(only for single day)"}
             </Label>
           </div>
 
@@ -319,7 +405,7 @@ export function LeaveApplicationForm({
           {/* Working Days Display */}
           {workingDays > 0 && (
             <div className="text-sm text-muted-foreground bg-muted p-2 rounded">
-              Working days: <strong>{workingDays}</strong> | Salary impact: <strong>{getSalaryImpact()}</strong>
+              Duration: <strong>{workingDays} day{workingDays !== 1 ? 's' : ''}</strong> | Salary impact: <strong>{getSalaryImpact()}</strong>
             </div>
           )}
 
@@ -331,6 +417,7 @@ export function LeaveApplicationForm({
               onChange={(e) => setReason(e.target.value)}
               placeholder="Please provide a reason for your leave..."
               rows={3}
+              disabled={isFormDisabled}
             />
           </div>
 
@@ -353,6 +440,7 @@ export function LeaveApplicationForm({
             onClick={handleSubmit}
             disabled={
               submitting ||
+              isFormDisabled ||
               !startDate ||
               !endDate ||
               !reason.trim() ||

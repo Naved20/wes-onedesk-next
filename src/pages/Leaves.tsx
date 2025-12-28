@@ -280,7 +280,8 @@ export default function Leaves() {
               <CardContent>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div className="space-y-2">
-                    <p><strong>Casual Leave:</strong> 2 days/month</p>
+                    <p><strong>Casual Leave:</strong> 2 days/month maximum</p>
+                    <p className="text-primary font-medium">• 1 day per application only</p>
                     <p>• Requires 3-day advance notice</p>
                     <p>• Maximum 1 leave per week</p>
                     <p>• No salary deduction</p>

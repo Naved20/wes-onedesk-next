@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { CalendarDays, AlertTriangle } from "lucide-react";
+import { CalendarDays, AlertTriangle, Info } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface LeaveBalance {
   casual_leaves_entitled: number;
@@ -53,22 +54,38 @@ export function LeaveBalanceCard({ balance, loading }: LeaveBalanceCardProps) {
       <CardContent className="space-y-4">
         {/* Casual Leaves */}
         <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Casual Leaves</span>
-            <span className="font-medium">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-muted-foreground">Casual Leaves</span>
+            <Badge variant={casualRemaining > 0 ? "secondary" : "destructive"}>
               {casualUsed}/{casualEntitled} used
-            </span>
+            </Badge>
           </div>
           <Progress value={usagePercent} className="h-2" />
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{casualRemaining} remaining</span>
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium">
+              {casualRemaining} remaining
+            </span>
             {casualRemaining === 0 && (
-              <span className="text-destructive flex items-center gap-1">
+              <span className="text-xs text-destructive flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" />
                 Limit reached
               </span>
             )}
+            {casualRemaining === 1 && (
+              <span className="text-xs text-amber-600 flex items-center gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                1 remaining
+              </span>
+            )}
           </div>
+        </div>
+
+        {/* Single Day Policy Notice */}
+        <div className="bg-muted/50 rounded-lg p-2 flex items-start gap-2">
+          <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">
+            <strong>1 day per application only.</strong> Each casual leave application must be for exactly 1 day.
+          </p>
         </div>
 
         {/* Other Leave Types Summary */}
@@ -85,7 +102,7 @@ export function LeaveBalanceCard({ balance, loading }: LeaveBalanceCardProps) {
 
         {/* Legend */}
         <div className="text-xs text-muted-foreground pt-2 border-t space-y-1">
-          <p>• <strong>Casual:</strong> 2/month, 3-day notice, 1/week max</p>
+          <p>• <strong>Casual:</strong> 2/month max, <u>1 day per application</u>, 3-day notice</p>
           <p>• <strong>Sick:</strong> With medical proof, 50% salary deduction</p>
           <p>• <strong>Unplanned:</strong> 100% salary deduction</p>
         </div>
