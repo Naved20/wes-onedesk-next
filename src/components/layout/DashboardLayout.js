@@ -72,7 +72,7 @@ export function DashboardLayout({ children }) {
         </Button>
         <div className="flex items-center gap-2">
           <img src="/wes-logo.jpg" alt="WES Foundation" className="h-8 w-8 rounded-full object-cover" />
-          <h1 className="font-semibold text-lg">WES OneDesk</h1>
+          <h1 className="font-semibold text-lg">WES OneDesk next</h1>
         </div>
         <div className="w-10" />
       </header>
