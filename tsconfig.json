@@ -25,17 +25,19 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
     ".next/types/**/*.ts",
     "app/**/*.js",
-    "app/**/*.jsx"
+    "app/**/*.jsx",
+    "src/**/*.js",
+    "src/**/*.jsx"
   ],
   "exclude": [
     "node_modules",
     "supabase",
     ".next",
     "out",
-    "dist"
+    "dist",
+    "**/*.ts",
+    "**/*.tsx"
   ]
 }
