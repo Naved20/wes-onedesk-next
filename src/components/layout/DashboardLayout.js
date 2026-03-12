@@ -95,7 +95,7 @@ export function DashboardLayout({ children }) {
           {/* Logo */}
           <div className="flex items-center h-16 px-6 border-b gap-3">
             <img src="/wes-logo.jpg" alt="WES Foundation" className="h-10 w-10 rounded-full object-cover" />
-            <h1 className="font-bold text-xl text-primary">WES OneDesk</h1>
+            <h1 className="font-bold text-xl text-primary">WES OneDesk next</h1>
           </div>
 
           {/* Navigation */}
