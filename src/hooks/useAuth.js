@@ -44,6 +44,7 @@ export function AuthProvider({ children  }) {
   }, []);
 
   const fetchUserRole = async (userId) => {
+    console.log("fetchUserRole called for userId:", userId);
     try {
       const { data, error } = await supabase
         .from("user_roles")
@@ -51,18 +52,27 @@ export function AuthProvider({ children  }) {
         .eq("user_id", userId)
         .maybeSingle();
 
+      console.log("fetchUserRole response:", { data, error });
+
       if (error) {
         console.error("Error fetching user role:", error);
+        // Set default role even on error so app doesn't hang
+        setRole("employee");
       } else if (data) {
+        console.log("Setting role to:", data.role);
         setRole(data.role);
       } else {
+        console.log("No role found, defaulting to employee");
         // Default to employee if no role found
         setRole("employee");
       }
     } catch (error) {
-      console.error("Error fetching user role:", error);
+      console.error("Exception in fetchUserRole:", error);
+      // Set default role on exception
+      setRole("employee");
     } finally {
       setLoading(false);
+      console.log("fetchUserRole completed, loading set to false");
     }
   };
 

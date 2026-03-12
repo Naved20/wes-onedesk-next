@@ -28,7 +28,9 @@ export default function Auth() {
 
   // Redirect if already logged in
   useEffect(() => {
+    console.log("Auth useEffect - loading:", loading, "user:", !!user, "role:", role);
     if (!loading && user && role) {
+      console.log("Redirecting to:", from);
       router.push(from);
     }
   }, [user, role, loading, router, from]);
@@ -60,13 +62,15 @@ export default function Auth() {
           description: error.message || "Invalid credentials",
           variant: "destructive",
         });
+        setIsLoading(false);
       } else {
-        console.log("Login successful");
+        console.log("Login successful, waiting for role...");
         toast({
           title: "Success",
           description: "Logged in successfully",
         });
-        router.push(from);
+        // Don't set isLoading to false yet - let the useEffect handle redirect
+        // The useEffect will redirect once user and role are both set
       }
     } catch (error) {
       console.error("Unexpected error during login:", error);
@@ -75,7 +79,6 @@ export default function Auth() {
         description: "An unexpected error occurred",
         variant: "destructive",
       });
-    } finally {
       setIsLoading(false);
     }
   };
