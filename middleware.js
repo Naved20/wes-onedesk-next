@@ -5,19 +5,19 @@ export async function middleware(request) {
   const res = NextResponse.next()
   const { pathname } = request.nextUrl
   
+  // Allow auth page without session check
+  if (pathname === '/auth') {
+    return res
+  }
+  
   // Create Supabase client
   const supabase = createMiddlewareClient(request, res)
   
   // Get session
   const { data: { session } } = await supabase.auth.getSession()
   
-  // Redirect authenticated users away from auth page
-  if (pathname === '/auth' && session) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
-  
   // Protect all routes except auth
-  if (pathname !== '/auth' && !session) {
+  if (!session) {
     return NextResponse.redirect(new URL('/auth', request.url))
   }
   

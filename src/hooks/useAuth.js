@@ -68,12 +68,15 @@ export function AuthProvider({ children  }) {
 
   const signIn = async (email, password) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("signIn called with email:", email);
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
+      console.log("Supabase signIn response:", { data, error });
       return { error: error || null };
     } catch (error) {
+      console.error("signIn exception:", error);
       return { error };
     }
   };

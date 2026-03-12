@@ -40,6 +40,7 @@ export default function Auth() {
     try {
       const validation = loginSchema.safeParse({ email: loginEmail, password: loginPassword });
       if (!validation.success) {
+        console.error("Validation error:", validation.error.errors[0].message);
         toast({
           title: "Validation Error",
           description: validation.error.errors[0].message,
@@ -49,15 +50,18 @@ export default function Auth() {
         return;
       }
 
+      console.log("Attempting login with email:", loginEmail.trim());
       const { error } = await signIn(loginEmail.trim(), loginPassword);
       
       if (error) {
+        console.error("Login error:", error);
         toast({
           title: "Login Failed",
           description: error.message || "Invalid credentials",
           variant: "destructive",
         });
       } else {
+        console.log("Login successful");
         toast({
           title: "Success",
           description: "Logged in successfully",
@@ -65,6 +69,7 @@ export default function Auth() {
         router.push(from);
       }
     } catch (error) {
+      console.error("Unexpected error during login:", error);
       toast({
         title: "Error",
         description: "An unexpected error occurred",
