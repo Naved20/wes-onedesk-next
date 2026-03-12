@@ -1,8 +1,6 @@
 'use client'
 
-import Attendance from '@/pages/Attendance'
-
-export const dynamic = 'force-dynamic'
+import Attendance from '@/page-components/Attendance'
 
 export default function AttendancePage() {
   return <Attendance />

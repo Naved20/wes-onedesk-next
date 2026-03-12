@@ -1,8 +1,6 @@
 'use client'
 
-import Institutions from '@/pages/Institutions'
-
-export const dynamic = 'force-dynamic'
+import Institutions from '@/page-components/Institutions'
 
 export default function InstitutionsPage() {
   return <Institutions />

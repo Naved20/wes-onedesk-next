@@ -1,8 +1,6 @@
 'use client'
 
-import Dashboard from '@/pages/Dashboard'
-
-export const dynamic = 'force-dynamic'
+import Dashboard from '@/page-components/Dashboard'
 
 export default function DashboardPage() {
   return <Dashboard />

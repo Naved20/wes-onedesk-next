@@ -1,8 +1,6 @@
 'use client'
 
-import Announcements from '@/pages/Announcements'
-
-export const dynamic = 'force-dynamic'
+import Announcements from '@/page-components/Announcements'
 
 export default function AnnouncementsPage() {
   return <Announcements />

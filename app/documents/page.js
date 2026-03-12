@@ -1,8 +1,6 @@
 'use client'
 
-import Documents from '@/pages/Documents'
-
-export const dynamic = 'force-dynamic'
+import Documents from '@/page-components/Documents'
 
 export default function DocumentsPage() {
   return <Documents />

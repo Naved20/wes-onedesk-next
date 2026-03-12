@@ -18,7 +18,8 @@ const nextConfig = {
   images: {
     domains: ['glijytescdhdtihzlhlg.supabase.co'],
   },
-  // Disable static optimization for all pages
+  // Disable static page generation completely
+  output: 'standalone',
   experimental: {
     appDir: true,
   },

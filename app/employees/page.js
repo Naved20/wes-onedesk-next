@@ -1,8 +1,6 @@
 'use client'
 
-import Employees from '@/pages/Employees'
-
-export const dynamic = 'force-dynamic'
+import Employees from '@/page-components/Employees'
 
 export default function EmployeesPage() {
   return <Employees />

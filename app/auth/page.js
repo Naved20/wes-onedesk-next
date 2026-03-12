@@ -1,8 +1,6 @@
 'use client'
 
-import Auth from '@/pages/Auth'
-
-export const dynamic = 'force-dynamic'
+import Auth from '@/page-components/Auth'
 
 export default function AuthPage() {
   return <Auth />

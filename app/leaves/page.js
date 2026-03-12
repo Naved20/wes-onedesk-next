@@ -1,8 +1,6 @@
 'use client'
 
-import Leaves from '@/pages/Leaves'
-
-export const dynamic = 'force-dynamic'
+import Leaves from '@/page-components/Leaves'
 
 export default function LeavesPage() {
   return <Leaves />

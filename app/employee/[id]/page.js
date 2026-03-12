@@ -1,8 +1,6 @@
 'use client'
 
-import EmployeeProfile from '@/pages/EmployeeProfile.js'
-
-export const dynamic = 'force-dynamic'
+import EmployeeProfile from '@/page-components/EmployeeProfile.js'
 
 export default function EmployeeProfilePage({ params }) {
   return <EmployeeProfile id={params.id} />
