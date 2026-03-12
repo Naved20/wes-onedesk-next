@@ -18,6 +18,10 @@ const nextConfig = {
   images: {
     domains: ['glijytescdhdtihzlhlg.supabase.co'],
   },
+  // Disable static optimization for all pages
+  experimental: {
+    appDir: true,
+  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
