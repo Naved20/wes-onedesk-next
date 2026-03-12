@@ -20,9 +20,6 @@ const nextConfig = {
   },
   // Disable static page generation completely
   output: 'standalone',
-  experimental: {
-    appDir: true,
-  },
   webpack: (config) => {
     config.resolve.alias = {
       ...config.resolve.alias,
