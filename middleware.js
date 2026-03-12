@@ -2,19 +2,28 @@ import { createMiddlewareClient } from '@/integrations/supabase/middleware'
 import { NextResponse } from 'next/server'
 
 export async function middleware(request) {
-  const res = NextResponse.next()
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+  
   const { pathname } = request.nextUrl
+  
+  // Create Supabase client
+  const supabase = createMiddlewareClient(request, response)
+  
+  // Refresh session if expired - required for Server Components
+  const { data: { session } } = await supabase.auth.getSession()
   
   // Allow auth page without session check
   if (pathname === '/auth') {
-    return res
+    // If already logged in, redirect to dashboard
+    if (session) {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+    return response
   }
-  
-  // Create Supabase client
-  const supabase = createMiddlewareClient(request, res)
-  
-  // Get session
-  const { data: { session } } = await supabase.auth.getSession()
   
   // Protect all routes except auth
   if (!session) {
@@ -42,7 +51,7 @@ export async function middleware(request) {
     }
   }
   
-  return res
+  return response
 }
 
 export const config = {
