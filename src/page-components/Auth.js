@@ -31,10 +31,10 @@ export default function Auth() {
     console.log("Auth useEffect - loading:", loading, "user:", !!user, "role:", role);
     if (!loading && user && role) {
       console.log("Redirecting to:", from);
-      // Use window.location for hard redirect to ensure middleware processes the request
-      window.location.href = from;
+      // Use router.push with replace to avoid adding to history
+      router.replace(from);
     }
-  }, [user, role, loading, from]);
+  }, [user, role, loading, router, from]);
 
   const handleLogin = async (e) => {
     e.preventDefault();

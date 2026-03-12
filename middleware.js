@@ -16,10 +16,13 @@ export async function middleware(request) {
   // Refresh session if expired - required for Server Components
   const { data: { session } } = await supabase.auth.getSession()
   
+  console.log(`[Middleware] ${pathname} - Session:`, !!session)
+  
   // Allow auth page without session check
   if (pathname === '/auth') {
     // If already logged in, redirect to dashboard
     if (session) {
+      console.log('[Middleware] Already logged in, redirecting to dashboard')
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
     return response
@@ -27,6 +30,7 @@ export async function middleware(request) {
   
   // Protect all routes except auth
   if (!session) {
+    console.log('[Middleware] No session, redirecting to auth')
     return NextResponse.redirect(new URL('/auth', request.url))
   }
   
@@ -39,6 +43,7 @@ export async function middleware(request) {
       .maybeSingle()
     
     const role = roleData?.role || 'employee'
+    console.log(`[Middleware] User role: ${role}`)
     
     // Admin-only routes
     if (['/institutions', '/settings'].includes(pathname) && role !== 'admin') {
