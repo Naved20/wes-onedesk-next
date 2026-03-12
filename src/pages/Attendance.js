@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState, useMemo } from "react";
 import { format, startOfMonth, endOfMonth, isSameDay, isSunday } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";

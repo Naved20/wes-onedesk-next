@@ -1,3 +1,5 @@
+'use client'
+
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { useAuth } from "@/hooks/useAuth";
 import { SalaryManagement } from "@/components/salary/SalaryManagement";
